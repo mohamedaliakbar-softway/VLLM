@@ -1,17 +1,19 @@
 """FastAPI application for Video Shorts Generator SaaS."""
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
 import logging
 import uuid
 from pathlib import Path
+import asyncio
 
 from config import settings
 from services.youtube_processor import YouTubeProcessor
 from services.gemini_analyzer import GeminiAnalyzer
 from services.video_clipper import VideoClipper
+from services.progress_tracker import progress_tracker
 
 # Configure logging
 logging.basicConfig(
@@ -83,6 +85,81 @@ class ErrorResponse(BaseModel):
 jobs = {}
 
 
+async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, platform: str):
+    """Background task to process video and emit progress updates."""
+    try:
+        jobs[job_id] = {"status": "processing", "progress": 0}
+        
+        await progress_tracker.update_progress(job_id, "processing", 10, "Getting video information...")
+        video_info = youtube_processor.get_video_info(youtube_url)
+        
+        await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing video with Gemini AI...")
+        highlights = gemini_analyzer.analyze_video_for_highlights(
+            youtube_url,
+            video_info.get('title', '')
+        )
+        
+        if not highlights:
+            await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found")
+            jobs[job_id] = {"status": "failed", "error": "No highlights found"}
+            return
+        
+        max_shorts = min(max_shorts or settings.max_highlights, len(highlights))
+        highlights = highlights[:max_shorts]
+        
+        await progress_tracker.update_progress(job_id, "processing", 50, "Downloading video...")
+        video_file_info = youtube_processor.download_video(
+            youtube_url,
+            video_info.get('video_id')
+        )
+        
+        await progress_tracker.update_progress(job_id, "processing", 70, f"Creating {len(highlights)} shorts...")
+        created_shorts = video_clipper.create_shorts(
+            video_file_info['file_path'],
+            highlights,
+            video_info['video_id'],
+            platform=platform
+        )
+        
+        if not created_shorts:
+            await progress_tracker.update_progress(job_id, "failed", 100, "Failed to create shorts")
+            jobs[job_id] = {"status": "failed", "error": "Failed to create shorts"}
+            return
+        
+        shorts_info = []
+        for short in created_shorts:
+            shorts_info.append({
+                "short_id": short["short_id"],
+                "filename": short["filename"],
+                "start_time": short["start_time"],
+                "end_time": short["end_time"],
+                "duration_seconds": short["duration_seconds"],
+                "engagement_score": short["engagement_score"],
+                "marketing_effectiveness": short["marketing_effectiveness"],
+                "suggested_cta": short["suggested_cta"],
+                "download_url": f"/api/v1/download/{short['filename']}"
+            })
+        
+        jobs[job_id] = {
+            "status": "completed",
+            "video_title": video_info.get('title', ''),
+            "video_duration": video_info.get('duration', 0),
+            "shorts": shorts_info
+        }
+        
+        await progress_tracker.update_progress(job_id, "completed", 100, f"Generated {len(shorts_info)} shorts successfully!")
+        
+        await asyncio.sleep(1)
+        youtube_processor.cleanup(video_file_info['file_path'])
+        
+    except Exception as e:
+        logger.error(f"Error in background job {job_id}: {str(e)}")
+        jobs[job_id] = {"status": "failed", "error": str(e)}
+        await progress_tracker.update_progress(job_id, "failed", 100, f"Error: {str(e)}")
+    finally:
+        progress_tracker.cleanup_job(job_id)
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -99,119 +176,37 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/api/v1/generate-shorts", response_model=ShortsResponse)
+@app.post("/api/v1/generate-shorts")
 async def generate_shorts(
     request: ShortsRequest,
     background_tasks: BackgroundTasks
 ):
     """
-    Generate marketing shorts from a YouTube video.
+    Start video processing job and return immediately with job ID.
     
-    This endpoint:
-    1. Downloads the video from YouTube
-    2. Analyzes it using Gemini AI to find engaging highlights
-    3. Creates 15-30 second shorts from the best segments
-    4. Returns information about the generated shorts
+    Use GET /api/v1/progress/{job_id} to get real-time progress via SSE.
+    Use GET /api/v1/job/{job_id} to check completion status and get results.
     """
     job_id = str(uuid.uuid4())
     
-    try:
-        logger.info(f"Starting job {job_id} for URL: {request.youtube_url}")
-        
-        # Step 1: Get video info (validate duration, get title)
-        logger.info("Getting video information...")
-        video_info = youtube_processor.get_video_info(str(request.youtube_url))
-        
-        # Step 2: Analyze video for highlights using Gemini (uses YouTube URL directly)
-        logger.info("Analyzing video for highlights with Gemini AI...")
-        highlights = gemini_analyzer.analyze_video_for_highlights(
-            str(request.youtube_url),
-            video_info.get('title', '')
-        )
-        
-        if not highlights:
-            raise HTTPException(
-                status_code=404,
-                detail="No suitable highlights found in the video"
-            )
-        
-        # Limit highlights based on request
-        max_shorts = min(request.max_shorts or settings.max_highlights, len(highlights))
-        highlights = highlights[:max_shorts]
-        
-        # Step 3: Download video only if we have valid highlights
-        logger.info("Downloading video for clipping...")
-        video_file_info = youtube_processor.download_video(
-            str(request.youtube_url),
-            video_info.get('video_id')
-        )
-        
-        # Step 4: Create video shorts
-        platform = request.platform or "default"
-        logger.info(f"Creating {len(highlights)} shorts for platform: {platform}...")
-        created_shorts = video_clipper.create_shorts(
-            video_file_info['file_path'],
-            highlights,
-            video_info['video_id'],
-            platform=platform
-        )
-        
-        if not created_shorts:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create video shorts"
-            )
-        
-        # Step 5: Prepare response
-        shorts_info = []
-        for short in created_shorts:
-            shorts_info.append(ShortInfo(
-                short_id=short["short_id"],
-                filename=short["filename"],
-                start_time=short["start_time"],
-                end_time=short["end_time"],
-                duration_seconds=short["duration_seconds"],
-                engagement_score=short["engagement_score"],
-                marketing_effectiveness=short["marketing_effectiveness"],
-                suggested_cta=short["suggested_cta"],
-                download_url=f"/api/v1/download/{short['filename']}"
-            ))
-        
-        # Schedule cleanup of source video
-        background_tasks.add_task(
-            youtube_processor.cleanup,
-            video_file_info['file_path']
-        )
-        
-        # Store job info
-        jobs[job_id] = {
-            "status": "completed",
-            "video_title": video_info.get('title', ''),
-            "shorts": shorts_info
-        }
-        
-        logger.info(f"Job {job_id} completed successfully")
-        
-        return ShortsResponse(
-            job_id=job_id,
-            status="completed",
-            video_title=video_info.get('title', ''),
-            video_duration=video_info.get('duration', 0),
-            shorts=shorts_info,
-            message=f"Successfully generated {len(shorts_info)} marketing shorts"
-        )
+    logger.info(f"Creating job {job_id} for URL: {request.youtube_url}")
     
-    except ValueError as e:
-        logger.error(f"Validation error in job {job_id}: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    progress_tracker.create_job(job_id)
+    jobs[job_id] = {"status": "queued", "progress": 0}
     
-    except Exception as e:
-        logger.error(f"Error in job {job_id}: {str(e)}")
-        jobs[job_id] = {"status": "failed", "error": str(e)}
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate shorts: {str(e)}"
-        )
+    background_tasks.add_task(
+        process_video_async,
+        job_id,
+        str(request.youtube_url),
+        request.max_shorts or 3,
+        request.platform or "default"
+    )
+    
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Video processing started. Connect to /api/v1/progress/{job_id} for real-time updates."
+    }
 
 
 @app.get("/api/v1/download/{filename}")
@@ -249,6 +244,21 @@ async def delete_short(filename: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(video_clipper.cleanup, str(file_path))
     
     return {"message": f"Short {filename} scheduled for deletion"}
+
+
+@app.get("/api/v1/progress/{job_id}")
+async def get_progress(job_id: str):
+    """Get real-time progress updates for a job via Server-Sent Events."""
+    progress_tracker.create_job(job_id)
+    
+    return StreamingResponse(
+        progress_tracker.get_progress_stream(job_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 if __name__ == "__main__":

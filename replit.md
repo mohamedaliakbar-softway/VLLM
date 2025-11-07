@@ -66,10 +66,49 @@ Other settings are configured in `config.py` with sensible defaults:
 6. Shorts are created and optimized for target platforms
 7. Files are made available for download
 
+## Technology Stack
+**Frontend:**
+- React 19 with Vite
+- React Router for navigation
+- Axios for API calls
+- Lucide React for icons
+- Custom CSS with modern dark theme
+
+**Backend:**
+- FastAPI (Python 3.11)
+- Google Gemini AI for video analysis
+- yt-dlp for YouTube downloads
+- FFmpeg for video processing
+- MoviePy for video editing
+- Server-Sent Events (SSE) for real-time updates
+
+## Application Flow
+1. **Landing Page**: User enters YouTube URL
+2. **Video Processing**: Backend downloads and analyzes video with Gemini AI
+3. **Editor Interface**: Split-screen with:
+   - Left: AI chat interface for conversational editing
+   - Right: Generated shorts preview and management
+4. **Editing Features**: Add captions, voice dubbing, timing adjustments
+5. **Publishing**: One-click share to multiple platforms with AI-generated copy
+
 ## Recent Changes
-- November 7, 2025: Initial Replit setup
-  - Configured for port 5000 (was 8000)
-  - Set up workflow for FastAPI server
-  - Installed Python 3.11 and all dependencies
-  - Installed FFmpeg system dependency
-  - Configured Gemini API key via Replit Secrets
+- November 7, 2025: Full application built
+  - Created React + Vite frontend with landing page and editor
+  - Implemented AI conversation interface with chat UI
+  - Added Server-Sent Events for real-time progress updates
+  - Split backend (port 8000) and frontend (port 5000) architecture
+  - Created beautiful dark-themed UI with gradient effects
+  - Set up dual-server workflow (backend + frontend)
+  - Configured proper CORS and API proxying
+  - Added progress tracking infrastructure for live updates
+
+## Future Enhancements
+The following features are planned for future releases:
+- Real-time video captioning/subtitle generation
+- Multi-language voice dubbing (Kannada, Hindi, etc.) with AI TTS
+- Advanced video editing via conversational AI
+- Social media OAuth integrations (YouTube, Instagram, Facebook, LinkedIn, TikTok)
+- AI-generated platform-specific marketing copy
+- Video preview player in the editor
+- Batch processing for multiple videos
+- Analytics dashboard for engagement metrics

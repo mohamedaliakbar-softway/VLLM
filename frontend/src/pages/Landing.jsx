@@ -20,10 +20,11 @@ function Landing() {
         max_shorts: 3,
       });
 
-      navigate('/editor', { state: { jobData: response.data } });
+      const jobId = response.data.job_id;
+      
+      navigate('/editor', { state: { jobId, youtubeUrl } });
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to process video. Please try again.');
-    } finally {
       setLoading(false);
     }
   };

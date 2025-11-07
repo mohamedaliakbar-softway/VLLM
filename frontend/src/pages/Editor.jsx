@@ -6,7 +6,10 @@ import axios from 'axios';
 function Editor() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [jobData, setJobData] = useState(location.state?.jobData || null);
+  const [jobId, setJobId] = useState(location.state?.jobId || null);
+  const [jobData, setJobData] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('Initializing...');
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [selectedShort, setSelectedShort] = useState(null);
@@ -14,22 +17,92 @@ function Editor() {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    if (!jobData) {
+    if (!jobId) {
       navigate('/');
       return;
     }
 
-    setMessages([
-      {
-        type: 'system',
-        content: `I've generated ${jobData.shorts?.length || 0} shorts from "${jobData.video_title}". You can ask me to add captions, change voice dubbing, adjust timing, or make other edits!`,
-      },
-    ]);
-
-    if (jobData.shorts && jobData.shorts.length > 0) {
-      setSelectedShort(jobData.shorts[0]);
-    }
-  }, [jobData, navigate]);
+    let eventSource;
+    let pollingInterval;
+    
+    const fetchJobResults = async () => {
+      try {
+        const response = await axios.get(`/api/v1/job/${jobId}`);
+        
+        if (response.data.status === 'completed') {
+          setJobData(response.data);
+          setProgress(100);
+          setStatusMessage('Completed!');
+          
+          if (response.data.shorts && response.data.shorts.length > 0) {
+            setSelectedShort(response.data.shorts[0]);
+            setMessages([
+              {
+                type: 'system',
+                content: `I've generated ${response.data.shorts.length} shorts from "${response.data.video_title}". You can ask me to add captions, change voice dubbing, adjust timing, or make other edits!`,
+              },
+            ]);
+          }
+          return true;
+        } else if (response.data.status === 'failed') {
+          setStatusMessage(`Failed: ${response.data.error || 'Unknown error'}`);
+          setMessages([{ type: 'system', content: `Error: ${response.data.error}` }]);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error('Failed to fetch job results:', error);
+        return false;
+      }
+    };
+    
+    const startPolling = () => {
+      pollingInterval = setInterval(async () => {
+        const isComplete = await fetchJobResults();
+        if (isComplete && pollingInterval) {
+          clearInterval(pollingInterval);
+        }
+      }, 2000);
+    };
+    
+    const connectSSE = () => {
+      eventSource = new EventSource(`/api/v1/progress/${jobId}`);
+      
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'heartbeat') return;
+        
+        setProgress(data.progress || 0);
+        setStatusMessage(data.message || 'Processing...');
+        
+        if (data.status === 'completed') {
+          fetchJobResults();
+          eventSource.close();
+        } else if (data.status === 'failed') {
+          setMessages([{ type: 'system', content: `Error: ${data.message}` }]);
+          eventSource.close();
+        }
+      };
+      
+      eventSource.onerror = () => {
+        console.log('SSE failed, falling back to polling');
+        eventSource.close();
+        startPolling();
+      };
+    };
+    
+    fetchJobResults().then((isComplete) => {
+      if (!isComplete) {
+        connectSSE();
+      }
+    });
+    
+    return () => {
+      if (eventSource) eventSource.close();
+      if (pollingInterval) clearInterval(pollingInterval);
+    };
+  }, [jobId, navigate]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -90,8 +163,27 @@ function Editor() {
     ]);
   };
 
-  if (!jobData) {
+  if (!jobId) {
     return null;
+  }
+
+  if (!jobData) {
+    return (
+      <div className="editor-container">
+        <div className="progress-container">
+          <div className="progress-card">
+            <Loader className="spinner-large" size={64} />
+            <h2>Processing Your Video</h2>
+            <p className="progress-message">{statusMessage}</p>
+            <div className="progress-bar-container">
+              <div className="progress-bar" style={{ width: `${progress}%` }}>
+                <span className="progress-text">{progress}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
