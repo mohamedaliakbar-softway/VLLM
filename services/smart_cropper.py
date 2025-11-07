@@ -266,27 +266,46 @@ class SmartCropper:
         positions: List[Tuple[float, int, int]],
         duration: float
     ) -> List[Tuple[float, int, int]]:
-        """Smooth crop positions using interpolation."""
+        """Smooth crop positions using interpolation and filtering to prevent shaking."""
         if len(positions) < 2:
             return positions
         
-        times = [p[0] for p in positions]
-        x_positions = [p[1] for p in positions]
-        y_positions = [p[2] for p in positions]
+        times = np.array([p[0] for p in positions])
+        x_positions = np.array([p[1] for p in positions], dtype=float)
+        y_positions = np.array([p[2] for p in positions], dtype=float)
+        
+        # Apply moving average filter to reduce jitter
+        if len(positions) > 3:
+            try:
+                from scipy.ndimage import uniform_filter1d
+                window_size = min(3, len(positions) // 2)
+                if window_size > 1:
+                    x_positions = uniform_filter1d(x_positions, size=window_size, mode='nearest')
+                    y_positions = uniform_filter1d(y_positions, size=window_size, mode='nearest')
+            except ImportError:
+                # Fallback if scipy.ndimage not available
+                logger.warning("scipy.ndimage not available, skipping filter")
+        
+        # Use cubic interpolation for smoother motion (if enough points)
+        if len(positions) >= 4:
+            interp_kind = 'cubic'
+        else:
+            interp_kind = 'linear'
         
         # Create interpolation functions
-        fx = interp1d(times, x_positions, kind='linear', fill_value='extrapolate')
-        fy = interp1d(times, y_positions, kind='linear', fill_value='extrapolate')
+        fx = interp1d(times, x_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        fy = interp1d(times, y_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
         
-        # Generate smooth positions at regular intervals
+        # Generate smooth positions at video frame rate (more frequent = smoother)
         smooth_positions = []
-        interval = 0.1  # 10 frames per second
-        t = 0.0
+        fps = 30  # Assume 30fps for smooth interpolation
+        interval = 1.0 / fps  # ~0.033s intervals
         
+        t = 0.0
         while t <= duration:
-            x = int(float(fx(t)))
-            y = int(float(fy(t)))
-            smooth_positions.append((t, x, y))
+            x = float(fx(t))
+            y = float(fy(t))
+            smooth_positions.append((t, int(x), int(y)))
             t += interval
         
         return smooth_positions
@@ -310,15 +329,56 @@ class SmartCropper:
             cropped = clip.cropped(x1=avg_x, y1=avg_y, x2=avg_x + crop_width, y2=avg_y + crop_height)
             return cropped.resized(new_size=(target_width, target_height))
         
+        # Create interpolation functions for smooth position lookup
+        times = np.array([p[0] for p in crop_positions])
+        x_positions = np.array([p[1] for p in crop_positions], dtype=float)
+        y_positions = np.array([p[2] for p in crop_positions], dtype=float)
+        
+        # Use interpolation for smooth position lookup (no abrupt jumps)
+        if len(crop_positions) >= 4:
+            interp_kind = 'cubic'
+        elif len(crop_positions) >= 2:
+            interp_kind = 'linear'
+        else:
+            interp_kind = 'linear'
+        
+        fx = interp1d(times, x_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        fy = interp1d(times, y_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        
+        # Store previous position for velocity limiting (prevents sudden jumps)
+        prev_crop_x = None
+        prev_crop_y = None
+        max_velocity = 50  # Maximum pixels per frame to move (prevents shaking)
+        
         # For dynamic cropping, create a function that adjusts crop position over time
         def make_frame(t):
-            # Find the closest crop position
-            closest_pos = min(crop_positions, key=lambda p: abs(p[0] - t))
-            crop_x, crop_y = closest_pos[1], closest_pos[2]
+            nonlocal prev_crop_x, prev_crop_y
+            
+            # Use interpolation to get smooth position (not closest)
+            crop_x = float(fx(t))
+            crop_y = float(fy(t))
+            
+            # Apply velocity limiting to prevent sudden jumps
+            if prev_crop_x is not None and prev_crop_y is not None:
+                dx = crop_x - prev_crop_x
+                dy = crop_y - prev_crop_y
+                distance = np.sqrt(dx**2 + dy**2)
+                
+                if distance > max_velocity:
+                    # Limit velocity
+                    scale = max_velocity / distance
+                    crop_x = prev_crop_x + dx * scale
+                    crop_y = prev_crop_y + dy * scale
+                
+                prev_crop_x = crop_x
+                prev_crop_y = crop_y
+            else:
+                prev_crop_x = crop_x
+                prev_crop_y = crop_y
             
             # Ensure crop coordinates are within bounds
-            crop_x = max(0, min(crop_x, clip.w - crop_width))
-            crop_y = max(0, min(crop_y, clip.h - crop_height))
+            crop_x = max(0, min(int(crop_x), clip.w - crop_width))
+            crop_y = max(0, min(int(crop_y), clip.h - crop_height))
             
             # Get frame at time t
             frame = clip.get_frame(t)

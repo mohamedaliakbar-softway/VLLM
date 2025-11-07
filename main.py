@@ -6,6 +6,7 @@ from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
 import logging
 import uuid
+import time
 from pathlib import Path
 
 from config import settings
@@ -114,20 +115,29 @@ async def generate_shorts(
     4. Returns information about the generated shorts
     """
     job_id = str(uuid.uuid4())
+    total_start_time = time.time()
     
     try:
         logger.info(f"Starting job {job_id} for URL: {request.youtube_url}")
         
         # Step 1: Get video info (validate duration, get title)
+        step1_start = time.time()
         logger.info("Getting video information...")
         video_info = youtube_processor.get_video_info(str(request.youtube_url))
+        step1_time = time.time() - step1_start
+        logger.info(f"Step 1 (video info) completed in {step1_time:.2f} seconds")
         
         # Step 2: Analyze video for highlights using Gemini (uses YouTube URL directly)
-        logger.info("Analyzing video for highlights with Gemini AI...")
+        # Pass video duration for optimized fast sampling analysis with 5 workers
+        step2_start = time.time()
+        logger.info("Analyzing video for highlights with Gemini AI (5 workers, parallel sampling)...")
         highlights = gemini_analyzer.analyze_video_for_highlights(
             str(request.youtube_url),
-            video_info.get('title', '')
+            video_info.get('title', ''),
+            video_info.get('duration')
         )
+        step2_time = time.time() - step2_start
+        logger.info(f"Step 2 (Gemini analysis) completed in {step2_time:.2f} seconds")
         
         if not highlights:
             raise HTTPException(
@@ -140,13 +150,17 @@ async def generate_shorts(
         highlights = highlights[:max_shorts]
         
         # Step 3: Download video only if we have valid highlights
+        step3_start = time.time()
         logger.info("Downloading video for clipping...")
         video_file_info = youtube_processor.download_video(
             str(request.youtube_url),
             video_info.get('video_id')
         )
+        step3_time = time.time() - step3_start
+        logger.info(f"Step 3 (video download) completed in {step3_time:.2f} seconds")
         
         # Step 4: Create video shorts
+        step4_start = time.time()
         platform = request.platform or "default"
         logger.info(f"Creating {len(highlights)} shorts for platform: {platform}...")
         created_shorts = video_clipper.create_shorts(
@@ -155,6 +169,8 @@ async def generate_shorts(
             video_info['video_id'],
             platform=platform
         )
+        step4_time = time.time() - step4_start
+        logger.info(f"Step 4 (create shorts) completed in {step4_time:.2f} seconds")
         
         if not created_shorts:
             raise HTTPException(
@@ -184,13 +200,16 @@ async def generate_shorts(
         )
         
         # Store job info
+        total_time = time.time() - total_start_time
         jobs[job_id] = {
             "status": "completed",
             "video_title": video_info.get('title', ''),
-            "shorts": shorts_info
+            "shorts": shorts_info,
+            "total_time_seconds": round(total_time, 2)
         }
         
-        logger.info(f"Job {job_id} completed successfully")
+        logger.info(f"Job {job_id} completed successfully in {total_time:.2f} seconds total")
+        logger.info(f"Breakdown: Info={step1_time:.2f}s, Analysis={step2_time:.2f}s, Download={step3_time:.2f}s, Create={step4_time:.2f}s")
         
         return ShortsResponse(
             job_id=job_id,
@@ -198,7 +217,7 @@ async def generate_shorts(
             video_title=video_info.get('title', ''),
             video_duration=video_info.get('duration', 0),
             shorts=shorts_info,
-            message=f"Successfully generated {len(shorts_info)} marketing shorts"
+            message=f"Successfully generated {len(shorts_info)} marketing shorts in {total_time:.2f} seconds"
         )
     
     except ValueError as e:
