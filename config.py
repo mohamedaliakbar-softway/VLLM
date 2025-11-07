@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     gemini_api_key: str  # Required - must be set in .env file
     
     # Server
-    host: str = "0.0.0.0"
-    port: int = 5000
+    host: str = "127.0.0.1"
+    port: int = 8000
     debug: bool = True
     
     # Video Processing
