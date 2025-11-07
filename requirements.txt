@@ -14,3 +14,19 @@ numpy>=1.24.0
 scipy>=1.11.0
 pillow>=10.0.0
 
+aiofiles
+fastapi
+google-genai
+httpx
+moviepy
+numpy
+opencv-python
+pillow
+pydantic
+pydantic-settings
+python-dotenv
+python-multipart
+requests
+scipy
+uvicorn[standard]
+yt-dlp
