@@ -89,15 +89,29 @@ Other settings are configured in `config.py` with sensible defaults:
 - Server-Sent Events (SSE) for real-time updates
 
 ## Application Flow
-1. **Landing Page**: User enters YouTube URL
-2. **Video Processing**: Backend downloads and analyzes video with Gemini AI
-3. **Editor Interface**: Split-screen with:
+1. **Landing Page**: User enters YouTube URL and clicks "Generate"
+2. **Instant Redirect**: Navigates to video editor with blurred YouTube thumbnail
+3. **Background Processing**: Backend extracts transcript → AI analysis → segment download → encoding (15-20s total)
+4. **Live Updates**: Loading overlay shows real-time progress status
+5. **Video Preview**: Blurred thumbnail automatically replaced with playable video when first short is ready
+6. **Editor Interface**: Three-panel layout with:
    - Left: AI chat interface for conversational editing
-   - Right: Generated shorts preview and management
-4. **Editing Features**: Add captions, voice dubbing, timing adjustments
-5. **Publishing**: One-click share to multiple platforms with AI-generated copy
+   - Center: Video player with timeline and clip management
+   - Right: Properties panel for clip customization
+7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **VIDEO PROCESSING FLOW & UX IMPROVEMENTS**
+  - **Instant Navigation**: Generate button now immediately redirects to editor
+  - **Blurred Thumbnail Preview**: Extracts YouTube thumbnail and displays with blur effect during processing
+  - **Real-time Progress**: Shows live status updates (Extracting transcript → AI analyzing → Downloading segments → Encoding)
+  - **Seamless Transition**: Blurred preview automatically replaced with playable video when generation completes
+  - **Smart Polling**: Frontend polls job status every second and handles completion/errors gracefully
+  - **YouTube Utilities**: Added `extractVideoId()` and `getThumbnailUrl()` helper functions
+  - **Enhanced Loading States**: Animated spinner, progress bar, and status messages
+  - **Route Cleanup**: Consolidated `/editor` as main video editor route
+  - **Error Handling**: Graceful fallbacks for missing transcripts, failed jobs, and timeout scenarios
+
 - November 8, 2025: **MASSIVE PERFORMANCE OPTIMIZATION**
   - **Reduced processing time from 10 minutes to 15-20 seconds** (30x faster!)
   - Implemented transcript-first analysis pipeline:
