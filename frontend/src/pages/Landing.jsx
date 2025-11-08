@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Video, Sparkles, ArrowRight, Zap, Clock, Share2 } from 'lucide-react';
 import axios from 'axios';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 function Landing() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -24,89 +28,101 @@ function Landing() {
   };
 
   return (
-    <div className="landing-new-container">
+    <div className="min-h-screen bg-white">
       {/* Navigation Bar */}
-      <nav className="nav-bar">
-        <div className="nav-content">
-          <div className="nav-brand">
-            <div className="brand-icon">
-              <Video size={24} />
+      <nav className="border-b border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-[#1E201E] rounded-lg flex items-center justify-center">
+                <Video className="h-6 w-6 text-white" />
+              </div>
+              <span className="text-xl font-semibold text-gray-900">HighlightAI</span>
             </div>
-            <span className="brand-name">HighlightAI</span>
-          </div>
-          <div className="nav-links">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How It Works</a>
-            <a href="#pricing">Pricing</a>
-          </div>
-          <div className="nav-actions">
-            <button className="nav-btn-secondary" onClick={() => navigate('/dashboard')}>
-              Sign In
-            </button>
-            <button className="nav-btn-primary">
-              <Sparkles size={18} />
-              Get Started
-            </button>
+            <div className="hidden md:flex items-center gap-6">
+              <a href="#features" className="text-sm text-gray-600 hover:text-gray-900">Features</a>
+              <a href="#how-it-works" className="text-sm text-gray-600 hover:text-gray-900">How It Works</a>
+              <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</a>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+                Sign In
+              </Button>
+              <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
+                <Sparkles className="h-4 w-4" />
+                Get Started
+              </Button>
+            </div>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <div className="hero-new-section">
-        <div className="ai-badge">
-          <Sparkles size={16} />
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
+        <Badge variant="outline" className="mb-8 inline-flex items-center gap-2 border-gray-300 text-gray-700">
+          <Sparkles className="h-4 w-4" />
           AI-Powered Video Highlights
-        </div>
+        </Badge>
         
-        <h1 className="hero-title">
+        <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-6">
           Transform Videos into
-          <span className="gradient-block"></span>
+          <span className="block h-16 bg-gradient-to-r from-[#1E201E] to-gray-600 rounded-lg mt-2 max-w-2xl mx-auto"></span>
         </h1>
 
-        <p className="hero-subtitle">
+        <p className="text-lg sm:text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
           Paste any YouTube URL and let our advanced AI extract the most
-          <br />
+          <br className="hidden sm:block" />
           engaging moments in seconds. Perfect for creating Shorts, Reels, and TikToks.
         </p>
 
         {/* URL Input */}
-        <form onSubmit={handleSubmit} className="url-input-container">
-          <input
-            type="url"
-            placeholder="https://youtube.com/watch?v=..."
-            value={youtubeUrl}
-            onChange={(e) => setYoutubeUrl(e.target.value)}
-            required
-            disabled={loading}
-            className="hero-input"
-          />
-          <button type="submit" disabled={!youtubeUrl} className="hero-generate-btn">
-            <Sparkles size={18} />
-            Generate
-            <ArrowRight size={18} />
-          </button>
+        <form onSubmit={handleSubmit} className="max-w-2xl mx-auto mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 p-1 bg-gray-50 rounded-xl border border-gray-200">
+            <Input
+              type="url"
+              placeholder="https://youtube.com/watch?v=..."
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              required
+              disabled={loading}
+              className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            <Button 
+              type="submit" 
+              disabled={!youtubeUrl || loading} 
+              className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white whitespace-nowrap"
+            >
+              <Sparkles className="h-4 w-4" />
+              Generate
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </form>
 
-        {error && <div className="error-banner">{error}</div>}
+        {error && (
+          <Alert variant="destructive" className="max-w-2xl mx-auto mb-6 border-red-200 bg-red-50">
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
+          </Alert>
+        )}
 
-        <div className="trial-notice">
-          <div className="check-icon">✓</div>
-          No credit card required • Free trial available
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-12">
+          <div className="text-green-600 font-bold">✓</div>
+          <span>No credit card required • Free trial available</span>
         </div>
 
         {/* Feature Highlights */}
-        <div className="feature-badges">
-          <div className="feature-badge">
-            <Zap size={20} className="badge-icon" />
-            <span>AI-Powered Detection</span>
+        <div className="flex flex-wrap items-center justify-center gap-8">
+          <div className="flex items-center gap-2 text-gray-700">
+            <Zap className="h-5 w-5 text-[#1E201E]" />
+            <span className="text-sm font-medium">AI-Powered Detection</span>
           </div>
-          <div className="feature-badge">
-            <Clock size={20} className="badge-icon" />
-            <span>2-Minute Processing</span>
+          <div className="flex items-center gap-2 text-gray-700">
+            <Clock className="h-5 w-5 text-[#1E201E]" />
+            <span className="text-sm font-medium">2-Minute Processing</span>
           </div>
-          <div className="feature-badge">
-            <Share2 size={20} className="badge-icon" />
-            <span>Multi-Platform Export</span>
+          <div className="flex items-center gap-2 text-gray-700">
+            <Share2 className="h-5 w-5 text-[#1E201E]" />
+            <span className="text-sm font-medium">Multi-Platform Export</span>
           </div>
         </div>
       </div>
