@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Dict, List
 from google import genai
 from google.genai import types
-import google.generativeai as genai
 from config import settings
 
 # Try to import Vosk (offline speech recognition)
@@ -28,9 +27,6 @@ try:
     VOSK_AVAILABLE = True
 except ImportError:
     VOSK_AVAILABLE = False
-
-# Configure Gemini
-genai.configure(api_key=settings.gemini_api_key)
 
 class CaptionGenerator:
     """
