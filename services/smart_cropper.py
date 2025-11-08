@@ -94,36 +94,22 @@ class SmartCropper:
         crop_height: int,
         duration: float
     ) -> List[Tuple[float, int, int]]:
-        """Track person/face position for podcast videos (OPTIMIZED - Strategic Sampling)."""
-        logger.info("Fast tracking person/face in video...")
+        """Track person/face position for podcast videos."""
+        logger.info("Tracking person/face in video...")
+        
+        positions = []
+        fps = clip.fps
+        frame_interval = 0.5  # Analyze every 0.5 seconds
+        num_frames = int(duration / frame_interval)
         
         # Get video dimensions
         video_width = clip.w
         video_height = clip.h
         
-        # OPTIMIZATION: Sample strategically at beginning, middle, and end
-        # This catches face position changes while being 12x faster than every-0.5s sampling
-        sample_times = []
-        if duration <= 10:
-            # Short video: sample at 25%, 50%, 75%
-            sample_times = [duration * 0.25, duration * 0.5, duration * 0.75]
-        elif duration <= 30:
-            # Medium video: sample at 20%, 40%, 60%, 80%
-            sample_times = [duration * 0.2, duration * 0.4, duration * 0.6, duration * 0.8]
-        else:
-            # Long video: sample every 10 seconds
-            num_samples = min(5, max(3, int(duration / 10)))
-            sample_times = [duration * i / (num_samples - 1) if num_samples > 1 else duration / 2 
-                           for i in range(num_samples)]
-        
-        positions = []
-        best_face = None
-        best_face_size = 0
-        
-        # Find the best (largest) face across all samples
-        for t in sample_times:
+        for i in range(num_frames):
+            t = i * frame_interval
             if t >= duration:
-                t = duration - 0.1
+                break
             
             try:
                 # Get frame at time t
@@ -131,53 +117,45 @@ class SmartCropper:
                 frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                 
-                # Detect faces using Haar Cascade (optimized parameters)
+                # Detect faces using Haar Cascade
+                faces = []
                 if self.face_cascade is not None:
                     faces = self.face_cascade.detectMultiScale(
                         frame_gray,
-                        scaleFactor=1.15,  # Balanced: not too slow, not too imprecise
-                        minNeighbors=4,    # Balanced: reduce false positives while staying fast
-                        minSize=(60, 60),  # Larger minimum for better detection
-                        maxSize=(int(video_width * 0.8), int(video_height * 0.8))  # Ignore unrealistic sizes
+                        scaleFactor=1.1,
+                        minNeighbors=5,
+                        minSize=(30, 30)
                     )
+                
+                if len(faces) > 0:
+                    # Get the largest face (most prominent)
+                    largest_face = max(faces, key=lambda f: f[2] * f[3])  # width * height
+                    x, y, w, h = largest_face
                     
-                    if len(faces) > 0:
-                        # Find the largest face in this frame
-                        largest_face = max(faces, key=lambda f: f[2] * f[3])
-                        face_size = largest_face[2] * largest_face[3]
-                        
-                        # Keep track of the best face found across all samples
-                        if face_size > best_face_size:
-                            best_face = largest_face
-                            best_face_size = face_size
+                    # Get face center
+                    face_center_x = x + w // 2
+                    face_center_y = y + h // 2
+                    
+                    # Calculate crop position to center face
+                    crop_x = max(0, min(face_center_x - crop_width // 2, video_width - crop_width))
+                    crop_y = max(0, min(face_center_y - crop_height // 2, video_height - crop_height))
+                    
+                    positions.append((t, crop_x, crop_y))
+                else:
+                    # No face detected - use center
+                    crop_x = (video_width - crop_width) // 2
+                    crop_y = (video_height - crop_height) // 2
+                    positions.append((t, crop_x, crop_y))
             
             except Exception as e:
                 logger.warning(f"Error tracking face at {t}s: {str(e)}")
+                # Fallback to center
+                crop_x = (video_width - crop_width) // 2
+                crop_y = (video_height - crop_height) // 2
+                positions.append((t, crop_x, crop_y))
         
-        # Calculate crop position based on best face found (or center if no face)
-        if best_face is not None:
-            x, y, w, h = best_face
-            
-            # Position face in upper-third of frame (rule of thirds for portraits)
-            # This looks more natural than dead center
-            face_center_x = x + w // 2
-            face_top_third = y + h // 3  # Focus on eyes/upper face
-            
-            # Calculate crop position
-            crop_x = max(0, min(face_center_x - crop_width // 2, video_width - crop_width))
-            crop_y = max(0, min(face_top_third - crop_height // 3, video_height - crop_height))
-            
-            logger.info(f"Face detected: {w}x{h}px at ({x}, {y}), using crop position ({crop_x}, {crop_y})")
-        else:
-            # No face detected - use center crop
-            crop_x = (video_width - crop_width) // 2
-            crop_y = (video_height - crop_height) // 2
-            logger.info(f"No face detected, using center crop at ({crop_x}, {crop_y})")
-        
-        # Return static crop positions (start and end with same position)
-        positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
-        
-        return positions
+        # Smooth the positions
+        return self._smooth_positions(positions, duration)
     
     def _track_mouse_or_feature(
         self,
@@ -187,89 +165,92 @@ class SmartCropper:
         duration: float,
         tracking_focus: str
     ) -> List[Tuple[float, int, int]]:
-        """Track mouse cursor or product feature for demo videos (OPTIMIZED - Smart Activity Analysis)."""
-        logger.info(f"Analyzing screen recording for optimal crop: {tracking_focus}")
+        """Track mouse cursor or product feature for demo videos."""
+        logger.info(f"Tracking mouse/feature in video: {tracking_focus}")
+        
+        positions = []
+        fps = clip.fps
+        frame_interval = 0.3  # Analyze more frequently for mouse tracking
+        num_frames = int(duration / frame_interval)
         
         video_width = clip.w
         video_height = clip.h
         
-        # OPTIMIZATION: Analyze activity zones to find optimal crop position
-        # Sample 3 strategic frames to detect where the action is
-        sample_times = [duration * 0.25, duration * 0.5, duration * 0.75]
-        activity_zones = []
-        
-        for t in sample_times:
+        # Try to detect mouse cursor (white/light colored small object)
+        for i in range(num_frames):
+            t = i * frame_interval
             if t >= duration:
-                t = duration - 0.1
+                break
             
             try:
                 frame = clip.get_frame(t)
-                frame_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 
-                # Detect high-contrast regions (likely UI elements, text, or active areas)
-                # Use edge detection to find areas of interest
-                edges = cv2.Canny(frame_gray, 50, 150)
+                # Convert to HSV for better color detection
+                hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
                 
-                # Divide frame into grid and find which regions have most edges (activity)
-                grid_size = 4  # 4x4 grid
-                cell_width = video_width // grid_size
-                cell_height = video_height // grid_size
+                # Detect white/light objects (typical mouse cursor)
+                lower_white = np.array([0, 0, 200])
+                upper_white = np.array([180, 30, 255])
+                mask = cv2.inRange(hsv, lower_white, upper_white)
                 
-                max_activity = 0
-                best_cell_x = grid_size // 2
-                best_cell_y = grid_size // 2
+                # Find contours
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
-                for grid_y in range(grid_size):
-                    for grid_x in range(grid_size):
-                        # Extract cell
-                        y1 = grid_y * cell_height
-                        y2 = min((grid_y + 1) * cell_height, video_height)
-                        x1 = grid_x * cell_width
-                        x2 = min((grid_x + 1) * cell_width, video_width)
-                        
-                        cell = edges[y1:y2, x1:x2]
-                        activity = np.sum(cell) / 255  # Count edge pixels
-                        
-                        if activity > max_activity:
-                            max_activity = activity
-                            best_cell_x = grid_x
-                            best_cell_y = grid_y
+                if contours:
+                    # Find the smallest contour (likely mouse cursor)
+                    smallest_contour = min(contours, key=cv2.contourArea)
+                    if cv2.contourArea(smallest_contour) < 500:  # Small object
+                        M = cv2.moments(smallest_contour)
+                        if M["m00"] != 0:
+                            cursor_x = int(M["m10"] / M["m00"])
+                            cursor_y = int(M["m01"] / M["m00"])
+                            
+                            # Center crop on cursor with some offset for context
+                            offset_x = crop_width // 4
+                            offset_y = crop_height // 4
+                            
+                            crop_x = max(0, min(cursor_x - crop_width // 2 + offset_x, video_width - crop_width))
+                            crop_y = max(0, min(cursor_y - crop_height // 2 + offset_y, video_height - crop_height))
+                            
+                            positions.append((t, crop_x, crop_y))
+                            continue
                 
-                # Store the center of the most active cell
-                center_x = (best_cell_x + 0.5) * cell_width
-                center_y = (best_cell_y + 0.5) * cell_height
-                activity_zones.append((center_x, center_y, max_activity))
+                # Fallback: detect center of screen activity (motion detection)
+                if i > 0:
+                    prev_frame = clip.get_frame(max(0, t - frame_interval))
+                    diff = cv2.absdiff(frame, prev_frame)
+                    gray_diff = cv2.cvtColor(diff, cv2.COLOR_RGB2GRAY)
+                    
+                    # Find region with most activity
+                    _, thresh = cv2.threshold(gray_diff, 30, 255, cv2.THRESH_BINARY)
+                    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    
+                    if contours:
+                        largest_contour = max(contours, key=cv2.contourArea)
+                        M = cv2.moments(largest_contour)
+                        if M["m00"] != 0:
+                            center_x = int(M["m10"] / M["m00"])
+                            center_y = int(M["m01"] / M["m00"])
+                            
+                            crop_x = max(0, min(center_x - crop_width // 2, video_width - crop_width))
+                            crop_y = max(0, min(center_y - crop_height // 2, video_height - crop_height))
+                            
+                            positions.append((t, crop_x, crop_y))
+                            continue
                 
-            except Exception as e:
-                logger.warning(f"Error analyzing activity at {t}s: {str(e)}")
-        
-        # Calculate weighted average of activity zones
-        if activity_zones:
-            total_weight = sum(zone[2] for zone in activity_zones)
-            if total_weight > 0:
-                weighted_x = sum(zone[0] * zone[2] for zone in activity_zones) / total_weight
-                weighted_y = sum(zone[1] * zone[2] for zone in activity_zones) / total_weight
-                
-                # Calculate crop position centered on activity zone
-                crop_x = int(max(0, min(weighted_x - crop_width // 2, video_width - crop_width)))
-                crop_y = int(max(0, min(weighted_y - crop_height // 2, video_height - crop_height)))
-                
-                logger.info(f"Activity detected at ({int(weighted_x)}, {int(weighted_y)}), using crop position ({crop_x}, {crop_y})")
-            else:
-                # No significant activity - use center
+                # Final fallback: center
                 crop_x = (video_width - crop_width) // 2
                 crop_y = (video_height - crop_height) // 2
-                logger.info(f"Low activity detected, using center crop at ({crop_x}, {crop_y})")
-        else:
-            # Fallback to center crop
-            crop_x = (video_width - crop_width) // 2
-            crop_y = (video_height - crop_height) // 2
-            logger.info(f"Analysis failed, using center crop at ({crop_x}, {crop_y})")
+                positions.append((t, crop_x, crop_y))
+            
+            except Exception as e:
+                logger.warning(f"Error tracking mouse/feature at {t}s: {str(e)}")
+                crop_x = (video_width - crop_width) // 2
+                crop_y = (video_height - crop_height) // 2
+                positions.append((t, crop_x, crop_y))
         
-        # Return static crop positions (start and end with same position)
-        positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
-        
-        return positions
+        return self._smooth_positions(positions, duration)
     
     def _center_crop_positions(
         self,
@@ -285,10 +266,49 @@ class SmartCropper:
         positions: List[Tuple[float, int, int]],
         duration: float
     ) -> List[Tuple[float, int, int]]:
-        """Smooth crop positions (OPTIMIZED - minimal processing)."""
-        # OPTIMIZATION: No interpolation needed for static crops
-        # Just return the positions as-is (already only 2 points)
-        return positions
+        """Smooth crop positions using interpolation and filtering to prevent shaking."""
+        if len(positions) < 2:
+            return positions
+        
+        times = np.array([p[0] for p in positions])
+        x_positions = np.array([p[1] for p in positions], dtype=float)
+        y_positions = np.array([p[2] for p in positions], dtype=float)
+        
+        # Apply moving average filter to reduce jitter
+        if len(positions) > 3:
+            try:
+                from scipy.ndimage import uniform_filter1d
+                window_size = min(3, len(positions) // 2)
+                if window_size > 1:
+                    x_positions = uniform_filter1d(x_positions, size=window_size, mode='nearest')
+                    y_positions = uniform_filter1d(y_positions, size=window_size, mode='nearest')
+            except ImportError:
+                # Fallback if scipy.ndimage not available
+                logger.warning("scipy.ndimage not available, skipping filter")
+        
+        # Use cubic interpolation for smoother motion (if enough points)
+        if len(positions) >= 4:
+            interp_kind = 'cubic'
+        else:
+            interp_kind = 'linear'
+        
+        # Create interpolation functions
+        fx = interp1d(times, x_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        fy = interp1d(times, y_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        
+        # Generate smooth positions at video frame rate (more frequent = smoother)
+        smooth_positions = []
+        fps = 30  # Assume 30fps for smooth interpolation
+        interval = 1.0 / fps  # ~0.033s intervals
+        
+        t = 0.0
+        while t <= duration:
+            x = float(fx(t))
+            y = float(fy(t))
+            smooth_positions.append((t, int(x), int(y)))
+            t += interval
+        
+        return smooth_positions
     
     def _apply_dynamic_crop(
         self,
@@ -298,18 +318,96 @@ class SmartCropper:
         crop_height: int,
         target_size: Tuple[int, int]
     ) -> VideoFileClip:
-        """Apply dynamic cropping based on position data (OPTIMIZED - Static crop for speed)."""
+        """Apply dynamic cropping based on position data."""
         target_width, target_height = target_size
         
-        # OPTIMIZATION: Use static crop (much faster than frame-by-frame)
-        # Calculate average position from all samples
-        avg_x = sum(p[1] for p in crop_positions) // len(crop_positions)
-        avg_y = sum(p[2] for p in crop_positions) // len(crop_positions)
+        # If we have very few positions, use average position
+        if len(crop_positions) <= 2:
+            avg_x = sum(p[1] for p in crop_positions) // len(crop_positions)
+            avg_y = sum(p[2] for p in crop_positions) // len(crop_positions)
+            # Use simple crop
+            cropped = clip.cropped(x1=avg_x, y1=avg_y, x2=avg_x + crop_width, y2=avg_y + crop_height)
+            return cropped.resized(new_size=(target_width, target_height))
         
-        # Use MoviePy's built-in crop and resize (faster than make_frame)
-        cropped = clip.cropped(x1=avg_x, y1=avg_y, x2=avg_x + crop_width, y2=avg_y + crop_height)
-        resized = cropped.resized(new_size=(target_width, target_height))
+        # Create interpolation functions for smooth position lookup
+        times = np.array([p[0] for p in crop_positions])
+        x_positions = np.array([p[1] for p in crop_positions], dtype=float)
+        y_positions = np.array([p[2] for p in crop_positions], dtype=float)
         
-        logger.info(f"Applied static crop at ({avg_x}, {avg_y}) with size {crop_width}x{crop_height}, resized to {target_width}x{target_height}")
+        # Use interpolation for smooth position lookup (no abrupt jumps)
+        if len(crop_positions) >= 4:
+            interp_kind = 'cubic'
+        elif len(crop_positions) >= 2:
+            interp_kind = 'linear'
+        else:
+            interp_kind = 'linear'
         
-        return resized
+        fx = interp1d(times, x_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        fy = interp1d(times, y_positions, kind=interp_kind, fill_value='extrapolate', bounds_error=False)
+        
+        # Store previous position for velocity limiting (prevents sudden jumps)
+        prev_crop_x = None
+        prev_crop_y = None
+        max_velocity = 50  # Maximum pixels per frame to move (prevents shaking)
+        
+        # For dynamic cropping, create a function that adjusts crop position over time
+        def make_frame(t):
+            nonlocal prev_crop_x, prev_crop_y
+            
+            # Use interpolation to get smooth position (not closest)
+            crop_x = float(fx(t))
+            crop_y = float(fy(t))
+            
+            # Apply velocity limiting to prevent sudden jumps
+            if prev_crop_x is not None and prev_crop_y is not None:
+                dx = crop_x - prev_crop_x
+                dy = crop_y - prev_crop_y
+                distance = np.sqrt(dx**2 + dy**2)
+                
+                if distance > max_velocity:
+                    # Limit velocity
+                    scale = max_velocity / distance
+                    crop_x = prev_crop_x + dx * scale
+                    crop_y = prev_crop_y + dy * scale
+                
+                prev_crop_x = crop_x
+                prev_crop_y = crop_y
+            else:
+                prev_crop_x = crop_x
+                prev_crop_y = crop_y
+            
+            # Ensure crop coordinates are within bounds
+            crop_x = max(0, min(int(crop_x), clip.w - crop_width))
+            crop_y = max(0, min(int(crop_y), clip.h - crop_height))
+            
+            # Get frame at time t
+            frame = clip.get_frame(t)
+            
+            # Crop the frame
+            cropped = frame[int(crop_y):int(crop_y + crop_height), int(crop_x):int(crop_x + crop_width)]
+            
+            # Handle edge cases where crop might be out of bounds
+            if cropped.shape[0] != crop_height or cropped.shape[1] != crop_width:
+                # Fallback: use center crop
+                center_x = (clip.w - crop_width) // 2
+                center_y = (clip.h - crop_height) // 2
+                cropped = frame[int(center_y):int(center_y + crop_height), int(center_x):int(center_x + crop_width)]
+            
+            # Resize to target size using high-quality resampling
+            from PIL import Image
+            img = Image.fromarray(cropped)
+            img_resized = img.resize((target_width, target_height), Image.LANCZOS)
+            
+            return np.array(img_resized)
+        
+        # Create new clip with dynamic cropping
+        from moviepy import VideoClip
+        new_clip = VideoClip(make_frame, duration=clip.duration)
+        new_clip = new_clip.with_fps(clip.fps)
+        
+        # Copy audio if available
+        if clip.audio is not None:
+            new_clip = new_clip.with_audio(clip.audio)
+        
+        return new_clip
+

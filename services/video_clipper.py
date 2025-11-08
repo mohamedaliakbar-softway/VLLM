@@ -18,7 +18,6 @@ class VideoClipper:
         self.output_dir = Path(settings.output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.smart_cropper = SmartCropper()
-        self.use_ffmpeg_direct = True  # OPTIMIZATION: Use FFmpeg directly for 10-20x speed
     
     def create_shorts_fast(
         self, 
@@ -87,9 +86,27 @@ class VideoClipper:
                 logger.warning(f"Skipping highlight without valid timestamps: {h}")
         
         def process_segment(idx, segment_file_info, highlight):
-            """Process a single segment with ULTRA-FAST FFmpeg direct approach."""
+            """Process a single segment with MoviePy and smart cropping."""
             try:
                 segment_path = segment_file_info['file_path']
+                
+                # Load the segment
+                video = VideoFileClip(segment_path)
+                
+                # Get category and tracking info from highlight
+                category = highlight.get("category", "product_demo")
+                tracking_focus = highlight.get("tracking_focus", "")
+                
+                # Apply smart cropping with subject tracking
+                try:
+                    clip = self.smart_cropper.apply_smart_crop(
+                        video, category, tracking_focus, target_size
+                    )
+                    logger.info(f"Applied smart crop for {category} (tracking: {tracking_focus}) on segment {idx}")
+                except Exception as e:
+                    logger.warning(f"Smart cropping failed for segment {idx}, using fallback: {str(e)}")
+                    # Fallback to simple resize
+                    clip = video.resized(new_size=target_size)
                 
                 # Generate output filename with platform suffix
                 platform_suffix = platform_key if platform_key != "default" else ""
@@ -99,89 +116,29 @@ class VideoClipper:
                     output_filename = f"{video_id}_h_{idx}.mp4"
                 output_path = self.output_dir / output_filename
                 
-                # OPTIMIZATION: Try FFmpeg direct (10-20x faster than MoviePy)
-                ffmpeg_success = False
-                if self.use_ffmpeg_direct:
-                    try:
-                        # Quick probe to get video dimensions
-                        video_temp = VideoFileClip(segment_path)
-                        original_width = video_temp.w
-                        original_height = video_temp.h
-                        video_temp.close()
-                        
-                        # Calculate crop dimensions
-                        target_width, target_height = target_size
-                        target_aspect = target_width / target_height
-                        original_aspect = original_width / original_height
-                        
-                        if original_aspect > target_aspect:
-                            crop_width = int(original_height * target_aspect)
-                            crop_height = original_height
-                            crop_x = (original_width - crop_width) // 2
-                            crop_y = 0
-                        else:
-                            crop_width = original_width
-                            crop_height = int(original_width / target_aspect)
-                            crop_x = 0
-                            crop_y = (original_height - crop_height) // 2
-                        
-                        # Use FFmpeg directly for ultra-fast crop+scale
-                        self._ffmpeg_crop_and_scale(
-                            segment_path,
-                            str(output_path),
-                            crop_x, crop_y, crop_width, crop_height,
-                            target_width, target_height
-                        )
-                        
-                        logger.info(f"Ultra-fast FFmpeg processing completed for segment {idx}")
-                        ffmpeg_success = True
-                        
-                    except Exception as e:
-                        logger.warning(f"FFmpeg direct failed for segment {idx}, falling back to MoviePy: {str(e)}")
-                        self.use_ffmpeg_direct = False
+                # Export clip with high quality settings for direct upload
+                clip.write_videofile(
+                    str(output_path),
+                    codec='libx264',
+                    audio_codec='aac',
+                    preset='slow',  # Better quality, slower encoding
+                    bitrate='8000k',  # Higher bitrate for better quality
+                    fps=clip.fps if clip.fps else 30,
+                    audio_bitrate='192k',  # High quality audio
+                    threads=4,  # Use multiple threads for faster encoding
+                    ffmpeg_params=[
+                        '-crf', '18',  # High quality (lower = better, 18 is visually lossless)
+                        '-pix_fmt', 'yuv420p',  # Compatible format
+                        '-movflags', '+faststart',  # Enable streaming
+                        '-profile:v', 'high',  # H.264 high profile
+                        '-level', '4.0',  # H.264 level
+                    ],
+                    logger=None  # Suppress moviepy logs
+                )
                 
-                # Fallback to MoviePy if FFmpeg failed
-                if not ffmpeg_success:
-                    # Load the segment
-                    video = VideoFileClip(segment_path)
-                    
-                    # Get category and tracking info from highlight
-                    category = highlight.get("category", "product_demo")
-                    tracking_focus = highlight.get("tracking_focus", "")
-                    
-                    # Apply smart cropping with subject tracking
-                    try:
-                        clip = self.smart_cropper.apply_smart_crop(
-                            video, category, tracking_focus, target_size
-                        )
-                        logger.info(f"Applied smart crop for {category} (tracking: {tracking_focus}) on segment {idx}")
-                    except Exception as e:
-                        logger.warning(f"Smart cropping failed for segment {idx}, using fallback: {str(e)}")
-                        # Fallback to simple resize
-                        clip = video.resized(new_size=target_size)
-                    
-                    # Export clip with OPTIMIZED settings for fast encoding
-                    # OPTIMIZATION: Use faster preset and lower bitrate for 5-10x speed improvement
-                    clip.write_videofile(
-                        str(output_path),
-                        codec='libx264',
-                        audio_codec='aac',
-                        preset='veryfast',  # FAST encoding (was 'slow')
-                        bitrate='2500k',  # Good quality for shorts (was 8000k)
-                        fps=30,  # Fixed fps for consistency
-                        audio_bitrate='128k',  # Good audio quality (was 192k)
-                        threads=4,  # Use multiple threads
-                        ffmpeg_params=[
-                            '-crf', '23',  # Good quality (was 18 - visually lossless but slow)
-                            '-pix_fmt', 'yuv420p',  # Compatible format
-                            '-movflags', '+faststart',  # Enable streaming
-                        ],
-                        logger=None  # Suppress moviepy logs
-                    )
-                    
-                    # Close clip and video to free memory
-                    clip.close()
-                    video.close()
+                # Close clip and video to free memory
+                clip.close()
+                video.close()
                 
                 # Helper function to format seconds as timestamp
                 def seconds_to_timestamp(seconds):
@@ -430,21 +387,22 @@ class VideoClipper:
                         output_filename = f"{video_id}_short_{idx}.mp4"
                     output_path = self.output_dir / output_filename
                     
-                    # Export clip with OPTIMIZED settings for fast encoding
-                    # OPTIMIZATION: Use faster preset and lower bitrate for 5-10x speed improvement
+                    # Export clip with high quality settings for direct upload
                     clip.write_videofile(
                         str(output_path),
                         codec='libx264',
                         audio_codec='aac',
-                        preset='veryfast',  # FAST encoding (was 'slow')
-                        bitrate='2500k',  # Good quality for shorts (was 8000k)
-                        fps=30,  # Fixed fps for consistency
-                        audio_bitrate='128k',  # Good audio quality (was 192k)
-                        threads=4,  # Use multiple threads
+                        preset='slow',  # Better quality, slower encoding
+                        bitrate='8000k',  # Higher bitrate for better quality
+                        fps=clip.fps if clip.fps else 30,
+                        audio_bitrate='192k',  # High quality audio
+                        threads=4,  # Use multiple threads for faster encoding
                         ffmpeg_params=[
-                            '-crf', '23',  # Good quality (was 18 - visually lossless but slow)
+                            '-crf', '18',  # High quality (lower = better, 18 is visually lossless)
                             '-pix_fmt', 'yuv420p',  # Compatible format
                             '-movflags', '+faststart',  # Enable streaming
+                            '-profile:v', 'high',  # H.264 high profile
+                            '-level', '4.0',  # H.264 level
                         ],
                         logger=None  # Suppress moviepy logs
                     )
@@ -478,37 +436,6 @@ class VideoClipper:
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
             raise
-    
-    def _ffmpeg_crop_and_scale(
-        self,
-        input_path: str,
-        output_path: str,
-        crop_x: int,
-        crop_y: int,
-        crop_width: int,
-        crop_height: int,
-        target_width: int,
-        target_height: int
-    ):
-        """Use FFmpeg directly for ultra-fast crop and scale (10-20x faster than MoviePy)."""
-        # FFmpeg command for fast processing
-        cmd = [
-            'ffmpeg',
-            '-y',  # Overwrite output
-            '-i', input_path,  # Input file
-            '-vf', f'crop={crop_width}:{crop_height}:{crop_x}:{crop_y},scale={target_width}:{target_height}',  # Crop and scale in one pass
-            '-c:v', 'libx264',  # Video codec
-            '-preset', 'veryfast',  # Fast encoding
-            '-crf', '23',  # Good quality
-            '-c:a', 'aac',  # Audio codec
-            '-b:a', '128k',  # Audio bitrate
-            '-movflags', '+faststart',  # Enable streaming
-            '-pix_fmt', 'yuv420p',  # Compatible pixel format
-            output_path
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, check=True)
-        logger.info(f"FFmpeg direct processing completed: {output_path}")
     
     def cleanup(self, file_path: str):
         """Remove output video file."""
