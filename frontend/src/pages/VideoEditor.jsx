@@ -1714,7 +1714,7 @@ function VideoEditor() {
           <div className="flex-1 flex items-center justify-center min-h-0">
             <div className="relative w-[640px] aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
-                // New shimmer loading animation
+                // Loading animation with shimmer text
                 <div className="relative w-full h-full rounded-3xl overflow-hidden">
                   {thumbnailUrl && (
                     <img
@@ -1723,17 +1723,27 @@ function VideoEditor() {
                       className="w-full h-full object-cover blur-2xl brightness-50 opacity-50 rounded-3xl"
                     />
                   )}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl">
-                    <div className="relative px-8">
-                      {/* Shimmer effect text */}
-                      <div className="relative">
-                        <h2 className="text-7xl font-bold text-white/25 select-none">
-                          {loadingSteps[currentLoadingStep]?.text || "Processing..."}
-                        </h2>
-                        {/* Shimmer overlay that sweeps left to right */}
-                        <div className="absolute inset-0 overflow-hidden">
-                          <div className="animate-shimmer absolute inset-0"></div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
+                    {/* Centered loader content */}
+                    <div className="relative z-10 w-full max-w-md">
+                      <div className="mb-6 text-center">
+                        <div className="loader-wrapper-processing">
+                          <span className="loader-letter">G</span>
+                          <span className="loader-letter">e</span>
+                          <span className="loader-letter">n</span>
+                          <span className="loader-letter">e</span>
+                          <span className="loader-letter">r</span>
+                          <span className="loader-letter">a</span>
+                          <span className="loader-letter">t</span>
+                          <span className="loader-letter">i</span>
+                          <span className="loader-letter">n</span>
+                          <span className="loader-letter">g</span>
+                          <div className="loader"></div>
                         </div>
+                        {/* Shimmer text replacing percentage */}
+                        <p className="text-lg font-semibold mt-4 bg-gradient-to-r from-white/20 via-white/80 to-white/20 bg-clip-text text-transparent animate-shimmer-text" style={{ backgroundSize: '200% auto' }}>
+                          {loadingSteps[currentLoadingStep]?.text || "Processing..."}
+                        </p>
                       </div>
                     </div>
                   </div>
