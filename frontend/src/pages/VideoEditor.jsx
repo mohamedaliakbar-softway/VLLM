@@ -47,6 +47,7 @@ function VideoEditor() {
   const videoRef = useRef(null);
   const hasProcessedRef = useRef(false); // Track if video has been processed to prevent double submission
   const chatScrollRef = useRef(null); // Ref for auto-scrolling chat
+  const progressIntervalRef = useRef(null); // Interval for progress animation
 
   const youtubeUrl = location.state?.youtubeUrl;
   const videoId = extractVideoId(youtubeUrl);
@@ -57,6 +58,7 @@ function VideoEditor() {
   const [processingStatus, setProcessingStatus] =
     useState("Analyzing video...");
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [targetProgress, setTargetProgress] = useState(0); // Target progress for smooth animation
   const [error, setError] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   const MAX_API_RETRIES = 3; // Maximum retries at API level
@@ -193,6 +195,43 @@ function VideoEditor() {
     }
   }, [processingProgress, currentLoadingStep]);
 
+  // Smooth progress animation - fills proportionally between backend updates
+  useEffect(() => {
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+
+    // If current progress is less than target, animate it
+    if (processingProgress < targetProgress) {
+      const progressDiff = targetProgress - processingProgress;
+      
+      // Animate smoothly over time - increment by 1 each time
+      // The speed depends on how far we need to go
+      const updateInterval = 100; // Update every 100ms
+      
+      progressIntervalRef.current = setInterval(() => {
+        setProcessingProgress((current) => {
+          const next = current + 1;
+          if (next >= targetProgress) {
+            clearInterval(progressIntervalRef.current);
+            return targetProgress;
+          }
+          return next;
+        });
+      }, updateInterval);
+    } else if (processingProgress > targetProgress) {
+      // If target is lower, jump immediately (shouldn't happen but just in case)
+      setProcessingProgress(targetProgress);
+    }
+
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, [targetProgress, processingProgress]);
+
   // Process video function
   const processVideo = async () => {
     try {
@@ -269,12 +308,12 @@ function VideoEditor() {
           setProcessingStatus(progress);
         }
 
-        // Update progress percentage (0-100)
+        // Update target progress percentage (0-100) - will animate smoothly digit by digit
         if (typeof percent === "number") {
-          setProcessingProgress(Math.min(Math.max(percent, 0), 100));
+          setTargetProgress(Math.min(Math.max(percent, 0), 100));
         } else {
           // Estimate based on attempts if backend doesn't provide
-          setProcessingProgress(Math.min((attempts / maxAttempts) * 100, 95));
+          setTargetProgress(Math.min((attempts / maxAttempts) * 100, 95));
         }
 
         if (
@@ -283,7 +322,7 @@ function VideoEditor() {
           generatedShorts.length > 0
         ) {
           clearInterval(poll);
-          setProcessingProgress(100);
+          setTargetProgress(100);
           setRetryCount(0); // Reset retry count on success
 
           // Convert shorts to clips format
@@ -338,6 +377,7 @@ function VideoEditor() {
               ]);
               
               setProcessingStatus(`Retrying... (${newRetryCount}/${MAX_API_RETRIES})`);
+              setTargetProgress(0);
               setProcessingProgress(0);
               
               // Wait 3 seconds before retry
