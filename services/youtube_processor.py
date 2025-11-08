@@ -25,7 +25,7 @@ class YouTubeProcessor:
         self.browser = getattr(settings, 'youtube_browser', 'chrome').lower()
         # Rate limiting to prevent 429 errors
         self.last_request_time = 0
-        self.min_request_interval = 0.5  # 500ms minimum delay between requests
+        self.min_request_interval = 2.0  # 2 seconds minimum delay between requests
     
     def get_video_info(self, youtube_url: str, video_id: Optional[str] = None) -> dict:
         """
@@ -232,23 +232,39 @@ class YouTubeProcessor:
                     import time
                     
                     # Retry logic with exponential backoff for rate limiting
-                    max_retries = 3
-                    retry_delay = 1  # Start with 1 second
+                    max_retries = 5  # Increased from 3 to 5
+                    base_retry_delay = 5  # Start with 5 seconds instead of 1
                     
                     for attempt in range(max_retries):
                         try:
-                            resp = requests.get(subtitle_url, timeout=10)
+                            resp = requests.get(subtitle_url, timeout=30)  # Increased timeout from 10s
                             resp.raise_for_status()
                             transcript_text = self._parse_subtitles(resp.text)
                             break  # Success, exit retry loop
                         except requests.exceptions.HTTPError as http_err:
                             if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                                # Rate limited - wait and retry
-                                logger.warning(f"Rate limited (429) on attempt {attempt + 1}, retrying in {retry_delay}s...")
-                                time.sleep(retry_delay)
-                                retry_delay *= 2  # Exponential backoff
+                                # Rate limited - wait longer with exponential backoff
+                                wait_time = base_retry_delay * (2 ** attempt)  # 5s, 10s, 20s, 40s, 80s
+                                logger.warning(
+                                    f"Rate limited (429) on attempt {attempt + 1}/{max_retries} for video {video_id}, "
+                                    f"waiting {wait_time}s before retry..."
+                                )
+                                time.sleep(wait_time)
                             else:
-                                raise  # Re-raise on last attempt or non-429 errors
+                                # Re-raise on last attempt or non-429 errors
+                                logger.error(f"Failed to fetch transcript after {attempt + 1} attempts: {http_err}")
+                                raise
+                        except Exception as e:
+                            if attempt == max_retries - 1:
+                                # Last attempt, re-raise
+                                logger.error(f"Failed to fetch transcript after {max_retries} attempts: {str(e)}")
+                                raise
+                            # Other errors - retry with exponential backoff
+                            wait_time = base_retry_delay * (2 ** attempt)
+                            logger.warning(
+                                f"Error on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s: {str(e)}"
+                            )
+                            time.sleep(wait_time)
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
