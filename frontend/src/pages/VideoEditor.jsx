@@ -454,16 +454,21 @@ function VideoEditor() {
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+      const videoDuration = videoRef.current.duration;
+      console.log('Video metadata loaded, duration:', videoDuration);
+      setDuration(videoDuration);
       videoRef.current.volume = volume;
     }
   };
 
   const handleProgressClick = (e) => {
-    if (videoRef.current) {
+    if (videoRef.current && duration > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       const pos = (e.clientX - rect.left) / rect.width;
-      videoRef.current.currentTime = pos * videoRef.current.duration;
+      const newTime = pos * duration;
+      console.log('Progress bar clicked:', { pos, newTime, duration });
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
     }
   };
 
@@ -1289,7 +1294,7 @@ function VideoEditor() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 min-h-0 p-4">
+            <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
@@ -1547,17 +1552,20 @@ function VideoEditor() {
                       {/* Video Controls */}
                       <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent backdrop-blur-sm opacity-0 hover:opacity-100 transition-opacity rounded-b-3xl">
                         <div
-                          className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer mb-3 hover:h-2 transition-all"
+                          className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer mb-3 hover:h-2 transition-all relative group"
                           onClick={handleProgressClick}
                           role="progressbar"
                           aria-label="Video progress"
                         >
                           <div
-                            className="h-full bg-gradient-to-r from-[#1E201E] via-purple-600 to-pink-500 rounded-full transition-all shadow-lg shadow-[#1E201E]/50"
+                            className="h-full bg-gradient-to-r from-[#1E201E] via-purple-600 to-pink-500 rounded-full transition-all shadow-lg shadow-[#1E201E]/50 relative"
                             style={{
                               width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                             }}
-                          />
+                          >
+                            {/* Progress Pin/Thumb */}
+                            <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg border-2 border-purple-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"></div>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-3 text-white">
