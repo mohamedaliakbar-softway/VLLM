@@ -34,6 +34,19 @@ function VideoEditor() {
   const [processingStatus, setProcessingStatus] = useState('Analyzing video...');
   const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState('');
+  
+  // Loading animation states
+  const [loadingSteps] = useState([
+    { id: 1, text: 'Connecting to YouTube', completed: false },
+    { id: 2, text: 'Extracting video transcript', completed: false },
+    { id: 3, text: 'Analyzing content with AI', completed: false },
+    { id: 4, text: 'Identifying key highlights', completed: false },
+    { id: 5, text: 'Downloading video segments', completed: false },
+    { id: 6, text: 'Applying smart cropping', completed: false },
+    { id: 7, text: 'Generating short clips', completed: false },
+    { id: 8, text: 'Finalizing your videos', completed: false }
+  ]);
+  const [currentLoadingStep, setCurrentLoadingStep] = useState(0);
 
   // Video playback states
   const [isPlaying, setIsPlaying] = useState(false);
@@ -129,43 +142,55 @@ function VideoEditor() {
     }
   }, [youtubeUrl, navigate]);
 
+  // Update loading step based on processing progress
+  useEffect(() => {
+    // Each step represents 12.5% of progress (100% / 8 steps)
+    const stepIndex = Math.floor(processingProgress / 12.5);
+    if (stepIndex !== currentLoadingStep && stepIndex <= 8) {
+      setCurrentLoadingStep(stepIndex);
+    }
+  }, [processingProgress, currentLoadingStep]);
+
+  // Process video function
+  const processVideo = async () => {
+    try {
+      setProcessingStatus('Extracting transcript...');
+      
+      const response = await axios.post('/api/v1/generate-shorts', {
+        youtube_url: youtubeUrl,
+        max_shorts: 1,
+        "platform": "youtube_shorts"
+      });
+
+      setProcessingStatus('AI analyzing highlights...');
+      
+      // Poll for results
+      const jobId = response.data.job_id;
+      const pollInterval = pollJobStatus(jobId);
+      
+      return pollInterval;
+      
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to process video');
+      setIsProcessing(false);
+      setChatHistory(prev => [...prev, { 
+        role: 'assistant', 
+        content: `Error: ${err.response?.data?.detail || 'Failed to process video'}` 
+      }]);
+      return null;
+    }
+  };
+
   // Trigger video processing on mount
   useEffect(() => {
-    if (!youtubeUrl) return;
-    
-    // Prevent double submission (React StrictMode runs effects twice in dev)
-    if (hasProcessedRef.current) return;
-    hasProcessedRef.current = true;
-
     let pollInterval = null;
-
-    const processVideo = async () => {
-      try {
-        setProcessingStatus('Extracting transcript...');
-        
-        const response = await axios.post('/api/v1/generate-shorts', {
-          youtube_url: youtubeUrl,
-          max_shorts: 1,
-          "platform": "youtube_shorts"
-        });
-
-        setProcessingStatus('AI analyzing highlights...');
-        
-        // Poll for results
-        const jobId = response.data.job_id;
-        pollInterval = pollJobStatus(jobId);
-        
-      } catch (err) {
-        setError(err.response?.data?.detail || 'Failed to process video');
-        setIsProcessing(false);
-        setChatHistory(prev => [...prev, { 
-          role: 'assistant', 
-          content: `Error: ${err.response?.data?.detail || 'Failed to process video'}` 
-        }]);
-      }
-    };
-
-    processVideo();
+    
+    if (youtubeUrl && !hasProcessedRef.current) {
+      hasProcessedRef.current = true;
+      processVideo().then(interval => {
+        pollInterval = interval;
+      });
+    }
 
     // Cleanup on unmount
     return () => {
@@ -1092,44 +1117,104 @@ function VideoEditor() {
           </aside>
         )}
 
-        {/* Center Panel - Video Preview */}
+        {/* Center Panel - Video Preview (Fixed Size) */}
         <main className="flex flex-col bg-white p-6 overflow-hidden">
-          <div className="flex-1 flex items-center justify-center bg-black rounded-3xl overflow-hidden shadow-2xl relative">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="relative w-[360px] h-[640px] bg-black rounded-3xl overflow-hidden shadow-2xl">
             {isProcessing ? (
-              // Show blurred thumbnail while processing
+              // Enhanced loading animation with strike-through list
               <div className="relative w-full h-full rounded-3xl overflow-hidden">
                 {thumbnailUrl && (
                   <img 
                     src={thumbnailUrl} 
                     alt="Video thumbnail" 
-                    className="w-full h-full object-cover blur-2xl brightness-50 opacity-50 rounded-3xl"
+                    className="w-full h-full object-cover blur-3xl brightness-50 opacity-40 rounded-3xl"
                   />
                 )}
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
-                  <div className="loader-wrapper-processing">
-                    <span className="loader-letter">G</span>
-                    <span className="loader-letter">e</span>
-                    <span className="loader-letter">n</span>
-                    <span className="loader-letter">e</span>
-                    <span className="loader-letter">r</span>
-                    <span className="loader-letter">a</span>
-                    <span className="loader-letter">t</span>
-                    <span className="loader-letter">i</span>
-                    <span className="loader-letter">n</span>
-                    <span className="loader-letter">g</span>
-                    <div className="loader"></div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl rounded-3xl p-8">
+                  {/* Glass morphism bubble effect */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-96 h-96 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full blur-3xl animate-pulse"></div>
+                    <div className="absolute w-80 h-80 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-3xl animate-pulse animation-delay-1000"></div>
                   </div>
-                  <div className="relative z-10 text-center mt-6">
-                    <p className="text-lg font-medium text-white">{processingStatus}</p>
-                    <p className="text-sm text-white/80 mt-2">{Math.round(processingProgress)}%</p>
+                  
+                  {/* Loading steps list */}
+                  <div className="relative z-10 w-full max-w-md">
+                    <div className="mb-8 text-center">
+                      <h3 className="text-2xl font-bold text-white mb-2">Creating Your Magic ✨</h3>
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="h-12 w-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center">
+                          <div className="h-6 w-6 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-spin"></div>
+                        </div>
+                        <p className="text-lg font-semibold text-white">{Math.round(processingProgress)}%</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6">
+                      <div className="space-y-3">
+                        {loadingSteps.map((step, index) => {
+                          const isCompleted = currentLoadingStep > index;
+                          const isCurrent = currentLoadingStep === index;
+                          const isUpcoming = currentLoadingStep < index;
+                          
+                          return (
+                            <div
+                              key={step.id}
+                              className={`
+                                transition-all duration-500 transform
+                                ${isCurrent ? 'scale-105' : 'scale-100'}
+                                ${isUpcoming && index === currentLoadingStep + 1 ? 'opacity-50' : ''}
+                                ${isUpcoming && index > currentLoadingStep + 1 ? 'opacity-30' : ''}
+                              `}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`
+                                  w-5 h-5 rounded-full flex items-center justify-center transition-all duration-500
+                                  ${isCompleted ? 'bg-green-500' : isCurrent ? 'bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse' : 'bg-white/20'}
+                                `}>
+                                  {isCompleted && (
+                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  {isCurrent && (
+                                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                                  )}
+                                </div>
+                                <span className={`
+                                  text-sm font-medium transition-all duration-500
+                                  ${isCompleted ? 'text-gray-400 line-through' : isCurrent ? 'text-white' : 'text-gray-500'}
+                                `}>
+                                  {step.text}
+                                </span>
+                              </div>
+                              {isCurrent && (
+                                <div className="ml-8 mt-1">
+                                  <div className="h-1 bg-white/20 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-1000"
+                                      style={{ width: `${(processingProgress % 12.5) * 8}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 text-center">
+                      <p className="text-sm text-white/70">{processingStatus}</p>
+                    </div>
                   </div>
                 </div>
               </div>
             ) : (
               <>
                 {clips.length > 0 && selectedClip?.url ? (
-                  // Show video player when ready with 9:16 aspect ratio
-                  <div className="relative w-auto h-full max-w-full aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl">
+                  // Show video player with fixed dimensions
+                  <div className="relative w-full h-full bg-black rounded-3xl overflow-hidden">
                     <video
                       ref={videoRef}
                       className="w-full h-full object-cover rounded-3xl"
@@ -1225,6 +1310,7 @@ function VideoEditor() {
                 )}
               </>
             )}
+            </div>
           </div>
 
           {/* Timeline Section */}

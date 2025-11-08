@@ -13,6 +13,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
+  const [expandedVideo, setExpandedVideo] = useState(null);
   const [stats, setStats] = useState({
     totalVideos: 0,
     totalShorts: 0,
@@ -32,7 +33,14 @@ function Dashboard() {
           createdAt: '2024-01-15',
           shorts: 3,
           views: 1500,
-          engagement: 87
+          engagement: 87,
+          highlights: [
+            { id: 1, title: 'Key Strategy #1', duration: '45s', views: 500, platform: 'TikTok' },
+            { id: 2, title: 'Pro Marketing Tip', duration: '30s', views: 650, platform: 'Instagram' },
+            { id: 3, title: 'Growth Hacks', duration: '60s', views: 350, platform: 'YouTube Shorts' }
+          ],
+          status: 'completed',
+          processingTime: '1m 23s'
         },
         {
           id: 2,
@@ -41,7 +49,13 @@ function Dashboard() {
           createdAt: '2024-01-14',
           shorts: 2,
           views: 890,
-          engagement: 92
+          engagement: 92,
+          highlights: [
+            { id: 4, title: 'Launch Day Tips', duration: '50s', views: 450, platform: 'Instagram' },
+            { id: 5, title: 'Marketing Funnel', duration: '40s', views: 440, platform: 'TikTok' }
+          ],
+          status: 'completed',
+          processingTime: '1m 10s'
         },
       ]);
       setStats({
@@ -238,39 +252,73 @@ function Dashboard() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {videos.map((video) => (
-                <Card key={video.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="relative aspect-video bg-gray-100 overflow-hidden">
-                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button size="icon" className="rounded-full bg-white/90 hover:bg-white text-[#1E201E]">
-                        <Play className="h-6 w-6" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardHeader>
-                    <CardTitle className="text-lg">{video.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        {new Date(video.createdAt).toLocaleDateString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Play className="h-4 w-4" />
-                        {video.shorts} shorts
-                      </span>
-                    </div>
-                    <div className="flex gap-6 py-4 border-t border-b border-gray-200 mb-4">
-                      <div>
-                        <p className="text-xs text-gray-600">Views</p>
-                        <p className="text-lg font-semibold text-gray-900">{video.views}</p>
+                <div key={video.id} className="group">
+                  {/* Main Video Card with Enhanced Design */}
+                  <Card className="overflow-hidden hover:shadow-2xl transition-all duration-300 border-0 bg-gradient-to-br from-white to-gray-50">
+                    <div className="relative aspect-video bg-gray-100 overflow-hidden">
+                      <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300">
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <p className="text-white text-sm font-medium mb-2">{video.processingTime} processing</p>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="bg-white/20 backdrop-blur-sm border border-white/30 text-white hover:bg-white/30">
+                              <Play className="h-3 w-3 mr-1" />
+                              Preview
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-600">Engagement</p>
-                        <p className="text-lg font-semibold text-gray-900">{video.engagement}%</p>
+                      {/* Status Badge */}
+                      <div className="absolute top-3 right-3">
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                          {video.status}
+                        </span>
                       </div>
                     </div>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg flex items-center justify-between">
+                        <span className="line-clamp-1">{video.title}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 -mr-2"
+                          onClick={() => setExpandedVideo(expandedVideo === video.id ? null : video.id)}
+                        >
+                          <svg className={`h-4 w-4 transition-transform ${expandedVideo === video.id ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {new Date(video.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1 font-medium text-purple-600">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          {video.shorts} AI shorts
+                        </span>
+                      </div>
+                      
+                      {/* Stats with Visual Enhancement */}
+                      <div className="grid grid-cols-2 gap-3 py-3 px-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg mb-4">
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Eye className="h-3.5 w-3.5 text-gray-500" />
+                            <p className="text-lg font-bold text-gray-900">{video.views.toLocaleString()}</p>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">Total Views</p>
+                        </div>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                            <p className="text-lg font-bold text-green-600">{video.engagement}%</p>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">Engagement</p>
+                        </div>
+                      </div>
                     <div className="flex gap-2">
                       <Button 
                         variant="outline" 
@@ -302,6 +350,49 @@ function Dashboard() {
                     </div>
                   </CardContent>
                 </Card>
+                
+                {/* Expandable Highlights Section */}
+                {expandedVideo === video.id && video.highlights && (
+                  <div className="mt-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      Generated Highlights
+                    </h3>
+                    {video.highlights.map((highlight) => (
+                      <Card key={highlight.id} className="border border-purple-100 bg-gradient-to-r from-purple-50 to-white hover:shadow-md transition-all">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 mb-1">{highlight.title}</h4>
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <Film className="h-3 w-3" />
+                                  {highlight.duration}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Eye className="h-3 w-3" />
+                                  {highlight.views} views
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
+                                  {highlight.platform}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="icon" variant="ghost" className="h-8 w-8">
+                                <Play className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-8 w-8">
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+                </div>
               ))}
             </div>
           )}

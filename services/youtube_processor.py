@@ -17,6 +17,9 @@ class YouTubeProcessor:
     def __init__(self):
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        self.cookies_file = getattr(settings, 'youtube_cookies_file', None)
+        self.use_browser_cookies = getattr(settings, 'youtube_use_browser_cookies', True)
+        self.browser = getattr(settings, 'youtube_browser', 'chrome').lower()
     
     def get_video_info(self, youtube_url: str, video_id: Optional[str] = None) -> dict:
         """
@@ -33,13 +36,21 @@ class YouTubeProcessor:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
+                try:
+                    info = ydl.extract_info(youtube_url, download=False)
+                except yt_dlp.utils.DownloadError as e:
+                    error_msg = str(e)
+                    if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                        logger.error("YouTube bot detection triggered. Cookies may not be working.")
+                        logger.error("Solution: Export cookies manually using ./export_youtube_cookies.sh")
+                    raise
+                
                 duration = info.get('duration', 0)
                 
                 # Validate duration
@@ -83,16 +94,24 @@ class YouTubeProcessor:
             
             output_path = self.temp_dir / f"{video_id}.mp4"
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': str(output_path),
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get video info first
-                info = ydl.extract_info(youtube_url, download=False)
+                try:
+                    info = ydl.extract_info(youtube_url, download=False)
+                except yt_dlp.utils.DownloadError as e:
+                    error_msg = str(e)
+                    if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                        logger.error("YouTube bot detection triggered during video download.")
+                        logger.error("Solution: Export cookies manually using ./export_youtube_cookies.sh")
+                    raise
+                
                 duration = info.get('duration', 0)
                 
                 # Validate duration
@@ -140,17 +159,28 @@ class YouTubeProcessor:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'writesubtitles': True,
                 'writeautomaticsub': True,
                 'subtitleslangs': ['en', 'en-US', 'en-GB'],  # Broader language fallback
                 'skip_download': True,
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
+                try:
+                    info = ydl.extract_info(youtube_url, download=False)
+                except yt_dlp.utils.DownloadError as e:
+                    error_msg = str(e)
+                    if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                        logger.error("YouTube bot detection triggered. Cookies may not be working properly.")
+                        logger.error("Try:")
+                        logger.error("  1. Make sure you're signed into YouTube in Chrome")
+                        logger.error("  2. Run: ./export_youtube_cookies.sh to export cookies")
+                        logger.error("  3. Add to .env: YOUTUBE_COOKIES_FILE=./cookies.txt")
+                        logger.error("  4. Add to .env: YOUTUBE_USE_BROWSER_COOKIES=false")
+                    raise
                 
                 # Get transcript/subtitles
                 transcript_text = ""
@@ -239,14 +269,23 @@ class YouTubeProcessor:
             downloaded_segments = []
             
             # Get video stream URL without downloading
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'format': 'best[ext=mp4]/best',
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
+                try:
+                    info = ydl.extract_info(youtube_url, download=False)
+                except yt_dlp.utils.DownloadError as e:
+                    error_msg = str(e)
+                    if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                        logger.error("YouTube bot detection triggered during segment download.")
+                        logger.error("Cookies may not be working. Try exporting cookies manually.")
+                        logger.error("Run: ./export_youtube_cookies.sh")
+                    raise
+                
                 video_url = info['url']  # Direct video URL
                 
                 # Download each segment using FFmpeg (parallel would be even faster)
@@ -334,6 +373,84 @@ class YouTubeProcessor:
         content = re.sub(r'\s+', ' ', content)
         
         return content.strip()
+    
+    def _get_ydl_opts(self, base_opts: dict = None) -> dict:
+        """
+        Get yt-dlp options with cookie support to bypass bot detection.
+        
+        Args:
+            base_opts: Base options dictionary
+            
+        Returns:
+            Options dictionary with cookies configured
+        """
+        opts = base_opts.copy() if base_opts else {}
+        
+        # Add options to bypass bot detection
+        # Use a modern user agent to appear more like a real browser
+        opts.setdefault('user_agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        # Add referer to appear more legitimate
+        opts.setdefault('referer', 'https://www.youtube.com/')
+        
+        # Priority 1: Use cookies file if specified and exists
+        if self.cookies_file and os.path.exists(self.cookies_file):
+            opts['cookiefile'] = self.cookies_file
+            logger.info(f"Using cookies file: {self.cookies_file}")
+        # Priority 2: Use browser cookies if enabled
+        elif self.use_browser_cookies:
+            try:
+                # Try to use browser cookies
+                valid_browsers = ['chrome', 'firefox', 'safari', 'edge', 'opera', 'brave']
+                if self.browser in valid_browsers:
+                    # Try multiple browsers as fallback
+                    browsers_to_try = [self.browser]
+                    if self.browser != 'chrome':
+                        browsers_to_try.append('chrome')  # Chrome as fallback
+                    
+                    for browser in browsers_to_try:
+                        try:
+                            opts['cookiesfrombrowser'] = (browser,)
+                            logger.info(f"Using cookies from {browser} browser")
+                            break
+                        except Exception:
+                            if browser == browsers_to_try[-1]:
+                                raise
+                            continue
+                else:
+                    logger.warning(f"Invalid browser '{self.browser}', defaulting to chrome")
+                    opts['cookiesfrombrowser'] = ('chrome',)
+            except Exception as e:
+                logger.warning(f"Failed to configure browser cookies: {e}")
+                logger.warning("Consider exporting cookies manually. Run: ./export_youtube_cookies.sh")
+                # Don't fail completely, but log the warning
+        
+        # Add extractor args to help with YouTube bot detection
+        if 'extractor_args' not in opts:
+            opts['extractor_args'] = {}
+        if 'youtube' not in opts['extractor_args']:
+            opts['extractor_args']['youtube'] = {}
+        
+        # Try to use player client that's less likely to trigger bot detection
+        # Try multiple clients as fallback: web, android, ios, tv_embedded
+        # 'android' and 'ios' are often more reliable for bypassing bot detection
+        if 'player_client' not in opts['extractor_args']['youtube']:
+            opts['extractor_args']['youtube']['player_client'] = ['android', 'web']
+        
+        # Add additional headers to appear more like a browser
+        if 'http_headers' not in opts:
+            opts['http_headers'] = {}
+        opts['http_headers'].setdefault('Accept-Language', 'en-US,en;q=0.9')
+        opts['http_headers'].setdefault('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+        opts['http_headers'].setdefault('Sec-Fetch-Mode', 'navigate')
+        opts['http_headers'].setdefault('Sec-Fetch-Site', 'none')
+        opts['http_headers'].setdefault('Sec-Fetch-User', '?1')
+        
+        # Add retry options for transient errors
+        opts.setdefault('retries', 3)
+        opts.setdefault('fragment_retries', 3)
+        
+        return opts
     
     def _extract_video_id(self, url: str) -> str:
         """Extract video ID from YouTube URL."""
