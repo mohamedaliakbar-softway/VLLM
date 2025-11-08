@@ -1,12 +1,17 @@
 """FastAPI application for Video Shorts Generator SaaS."""
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
 import logging
 import uuid
 import time
+from datetime import datetime
 from pathlib import Path
 import asyncio
 import os
@@ -50,12 +55,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================================
+# Global Exception Handlers
+# ============================================================================
+# Note: More specific exception handlers should be registered first.
+# FastAPI will match the most specific handler for each exception type.
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors (Pydantic validation failures)."""
+    logger.warning(
+        f"Validation error: {exc.errors()}",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+        }
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Validation error",
+            "detail": exc.errors(),
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle FastAPI HTTP exceptions with proper logging."""
+    logger.warning(
+        f"HTTP Exception: {exc.status_code} - {exc.detail}",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "status_code": exc.status_code,
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+        }
+    )
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle Starlette HTTP exceptions."""
+    logger.warning(
+        f"Starlette HTTP Exception: {exc.status_code} - {exc.detail}",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "status_code": exc.status_code,
+        }
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+        }
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and return a proper error response.
+    
+    This is the fallback handler for any exception not caught by more specific handlers.
+    """
+    logger.error(
+        f"Unhandled exception: {type(exc).__name__}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "query_params": dict(request.query_params),
+        }
+    )
+    
+    return JSONResponse(
+        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if settings.debug else "An unexpected error occurred",
+            "type": type(exc).__name__,
+        }
+    )
+
 # Run database migrations on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup."""
     try:
-        # run_migrations()  # Temporarily disabled - migrations hanging
+        # Run migration to add new columns to projects table
+        from migrate import add_project_columns
+        add_project_columns()
+        logger.info("Database migration completed")
         logger.info("Application startup completed")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -138,56 +233,147 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             db.commit()
             logger.info(f"Project {job_id} created in database")
         
-        # STEP 1: Extract transcript (2-3 seconds) - NO VIDEO DOWNLOAD
-        await progress_tracker.update_progress(job_id, "processing", 10, "Extracting video transcript...")
+        # STEP 1 & 2: Extract transcript and analyze with retry mechanism
+        max_retries = settings.highlight_retry_max_attempts
+        retry_delay = settings.highlight_retry_delay
+        highlights = None
+        video_info = None
         
-        with StepLogger("Extract Transcript", {"url": youtube_url}):
+        for attempt in range(1, max_retries + 1):
             try:
-                video_info = youtube_processor.get_transcript(youtube_url)
-                logger.info(f"Transcript extracted: {len(video_info.get('transcript', ''))} chars")
+                # STEP 1: Extract transcript (2-3 seconds) - NO VIDEO DOWNLOAD
+                if attempt == 1:
+                    await progress_tracker.update_progress(job_id, "processing", 10, "Extracting video transcript...")
+                else:
+                    await progress_tracker.update_progress(
+                        job_id, 
+                        "processing", 
+                        10, 
+                        f"Retrying transcript extraction (attempt {attempt}/{max_retries})..."
+                    )
+                
+                with StepLogger("Extract Transcript", {"url": youtube_url, "attempt": attempt}):
+                    try:
+                        video_info = youtube_processor.get_transcript(youtube_url)
+                        logger.info(f"Transcript extracted (attempt {attempt}): {len(video_info.get('transcript', ''))} chars")
+                    except Exception as e:
+                        logger.error(f"Failed to extract transcript (attempt {attempt}): {type(e).__name__}: {str(e)}")
+                        if attempt == max_retries:
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                            raise RuntimeError(f"Transcript extraction failed after {max_retries} attempts: {str(e)}") from e
+                        # Wait before retry
+                        await asyncio.sleep(retry_delay * attempt)
+                        continue
+                
+                if not video_info.get('transcript'):
+                    logger.warning(f"No transcript found for {youtube_url} (attempt {attempt}), using title and description as fallback")
+                    # Use existing video_info data - no need to call get_video_info() again
+                    video_info['transcript'] = f"{video_info.get('title', '')}. {video_info.get('description', '')}"
+                
+                # Update project with video details and cache transcript (only on first successful attempt)
+                if attempt == 1:
+                    with StepLogger("Update Project Details"):
+                        project.video_id = video_info.get('video_id', '')
+                        project.video_title = video_info.get('title', '')
+                        project.video_duration = video_info.get('duration', 0)
+                        # Cache transcript and description to reduce future API calls
+                        project.transcript = video_info.get('transcript', '')
+                        project.video_description = video_info.get('description', '')
+                        project.transcript_fetched_at = datetime.utcnow()
+                        db.commit()
+                        logger.info(f"Project updated: video_id={project.video_id}, title={project.video_title}, duration={project.video_duration}s")
+                        logger.info(f"Transcript cached: {len(project.transcript)} chars")
+                
+                # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
+                if attempt == 1:
+                    await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing content with AI...")
+                else:
+                    await progress_tracker.update_progress(
+                        job_id, 
+                        "processing", 
+                        30, 
+                        f"Retrying AI analysis (attempt {attempt}/{max_retries})..."
+                    )
+                
+                transcript = video_info.get('transcript', '')
+                transcript_length = len(transcript) if transcript else 0
+                video_duration = video_info.get('duration', 0)
+                video_title = video_info.get('title', '')
+                video_description = video_info.get('description', '')
+                
+                logger.info(f"Analyzing transcript for job {job_id} (attempt {attempt}):")
+                logger.info(f"  - Transcript length: {transcript_length} chars")
+                logger.info(f"  - Video duration: {video_duration}s")
+                logger.info(f"  - Video title: {video_title}")
+                logger.info(f"  - Video description length: {len(video_description) if video_description else 0} chars")
+                
+                # Validate duration
+                if video_duration <= 0:
+                    logger.warning(f"WARNING: Video duration is {video_duration}s - this may cause highlight detection to fail!")
+                
+                with StepLogger("Gemini AI Analysis", {"transcript_length": transcript_length, "duration": video_duration, "attempt": attempt}):
+                    try:
+                        highlights = gemini_analyzer.analyze_transcript_for_highlights(
+                            transcript,
+                            video_title,
+                            video_description,
+                            video_duration
+                        )
+                        logger.info(f"Gemini analysis completed (attempt {attempt}): {len(highlights) if highlights else 0} highlights found")
+                        if highlights:
+                            for idx, h in enumerate(highlights, 1):
+                                logger.info(f"  Highlight {idx}: {h.get('start_time')} - {h.get('end_time')} ({h.get('duration_seconds')}s)")
+                        else:
+                            logger.warning(f"  No highlights returned from Gemini analyzer!")
+                    except Exception as e:
+                        logger.error(f"Gemini analysis failed (attempt {attempt}): {type(e).__name__}: {str(e)}")
+                        if attempt == max_retries:
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                            raise RuntimeError(f"AI analysis failed after {max_retries} attempts: {str(e)}") from e
+                        # Wait before retry
+                        await asyncio.sleep(retry_delay * attempt)
+                        continue
+                
+                # If highlights found, break out of retry loop
+                if highlights and len(highlights) > 0:
+                    logger.info(f"Successfully found {len(highlights)} highlights on attempt {attempt}")
+                    break
+                else:
+                    logger.warning(f"No highlights found on attempt {attempt}/{max_retries}")
+                    if attempt < max_retries:
+                        await progress_tracker.update_progress(
+                            job_id, 
+                            "processing", 
+                            30, 
+                            f"No highlights found. Retrying in {retry_delay * attempt}s... (attempt {attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(retry_delay * attempt)
+                    else:
+                        # Last attempt failed
+                        error_msg = f"No highlights found after {max_retries} attempts (transcript length: {transcript_length} chars, duration: {video_info.get('duration', 0)}s)"
+                        logger.warning(f"Job {job_id}: {error_msg}")
+                        await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found after retries")
+                        jobs[job_id] = {"status": "failed", "error": "No highlights found"}
+                        project.status = "failed"
+                        project.error_message = error_msg
+                        db.commit()
+                        return
+            
+            except RuntimeError:
+                # Re-raise RuntimeErrors (they're already logged)
+                raise
             except Exception as e:
-                logger.error(f"Failed to extract transcript: {type(e).__name__}: {str(e)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                raise RuntimeError(f"Transcript extraction failed: {str(e)}") from e
+                logger.error(f"Unexpected error during retry attempt {attempt}: {type(e).__name__}: {str(e)}")
+                if attempt == max_retries:
+                    raise
+                await asyncio.sleep(retry_delay * attempt)
+                continue
         
-        if not video_info.get('transcript'):
-            logger.warning(f"No transcript found for {youtube_url}, falling back to basic video info")
-            video_info = youtube_processor.get_video_info(youtube_url)
-            video_info['transcript'] = f"{video_info.get('title', '')}. {video_info.get('description', '')}"
-        
-        # Update project with video details
-        with StepLogger("Update Project Details"):
-            project.video_id = video_info.get('video_id', '')
-            project.video_title = video_info.get('title', '')
-            project.video_duration = video_info.get('duration', 0)
-            db.commit()
-            logger.info(f"Project updated: video_id={project.video_id}, title={project.video_title}, duration={project.video_duration}s")
-        
-        # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
-        await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing content with AI...")
-        
-        transcript = video_info.get('transcript', '')
-        transcript_length = len(transcript) if transcript else 0
-        logger.info(f"Analyzing transcript for job {job_id}: {transcript_length} chars, duration: {video_info.get('duration', 0)}s")
-        
-        with StepLogger("Gemini AI Analysis", {"transcript_length": transcript_length}):
-            try:
-                highlights = gemini_analyzer.analyze_transcript_for_highlights(
-                    transcript,
-                    video_info.get('title', ''),
-                    video_info.get('description', ''),
-                    video_info.get('duration', 0)
-                )
-                logger.info(f"Gemini analysis completed: {len(highlights) if highlights else 0} highlights found")
-            except Exception as e:
-                logger.error(f"Gemini analysis failed: {type(e).__name__}: {str(e)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                raise RuntimeError(f"AI analysis failed: {str(e)}") from e
-        
-        if not highlights:
-            error_msg = f"No highlights found (transcript length: {transcript_length} chars, duration: {video_info.get('duration', 0)}s)"
-            logger.warning(f"Job {job_id}: {error_msg}")
-            await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found")
+        # If we get here without highlights, something went wrong
+        if not highlights or len(highlights) == 0:
+            error_msg = f"No highlights found after {max_retries} attempts"
+            logger.error(f"Job {job_id}: {error_msg}")
+            await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found after retries")
             jobs[job_id] = {"status": "failed", "error": "No highlights found"}
             project.status = "failed"
             project.error_message = error_msg
@@ -595,11 +781,24 @@ async def _publish_publication_async(publication_id: str):
         db.commit()
 
         # Prepare metadata and persist payload snapshot
+        # Parse hashtags from comma-separated string
+        tags_list = []
+        if short.hashtags:
+            try:
+                tags_list = [tag.strip() for tag in short.hashtags.split(',') if tag.strip()]
+            except Exception:
+                pass
+        
         payload = {
             "platform": pub.platform,
             "file_path": file_path,
             "text": text_to_post,
-            "metadata": {"title": short.platform_title or short.title or ""},
+            "metadata": {
+                "title": short.platform_title or short.title or "",
+                "description": short.platform_description or short.title or "",
+                "tags": tags_list,
+                "privacy": "public"  # Can be made configurable
+            },
             "token_id": token.id
         }
         try:
@@ -1040,7 +1239,10 @@ class GenerateThumbnailPromptRequest(BaseModel):
 
 
 def _fetch_project_and_transcript(db, project_id: Optional[str] = None, short: Optional[Short] = None):
-    """Helper to get project, transcript text, and ensure basic availability."""
+    """Helper to get project, transcript text, and ensure basic availability.
+    
+    Uses cached transcript if available to reduce YouTube API calls.
+    """
     project = None
     if short and not project_id:
         project = db.query(Project).filter(Project.id == short.project_id).first()
@@ -1048,12 +1250,40 @@ def _fetch_project_and_transcript(db, project_id: Optional[str] = None, short: O
         project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Use cached transcript if available
+    if project.transcript and project.transcript.strip():
+        logger.info(f"Using cached transcript for project {project.id} ({len(project.transcript)} chars)")
+        info = {
+            'transcript': project.transcript,
+            'duration': project.video_duration or 0,
+            'title': project.video_title or '',
+            'video_id': project.video_id or '',
+            'thumbnail': '',
+            'description': project.video_description or ''
+        }
+        return project, info
+    
+    # Fetch transcript if not cached
     try:
+        logger.info(f"Fetching transcript for project {project.id} (not cached)")
         info = youtube_processor.get_transcript(project.youtube_url)
+        # Cache the transcript for future use
+        project.transcript = info.get('transcript', '')
+        project.video_description = info.get('description', '')
+        project.transcript_fetched_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"Cached transcript for project {project.id}")
     except Exception as e:
         logger.warning(f"Transcript fetch failed, falling back to video info: {e}")
         info = youtube_processor.get_video_info(project.youtube_url)
         info["transcript"] = f"{info.get('title','')}. {info.get('description','')}"
+        # Cache the fallback transcript
+        project.transcript = info.get('transcript', '')
+        project.video_description = info.get('description', '')
+        project.transcript_fetched_at = datetime.utcnow()
+        db.commit()
+    
     return project, info
 
 

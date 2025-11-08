@@ -58,6 +58,8 @@ function VideoEditor() {
     useState("Analyzing video...");
   const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_API_RETRIES = 3; // Maximum retries at API level
 
   // Loading animation states
   const [loadingSteps] = useState([
@@ -190,6 +192,7 @@ function VideoEditor() {
   const processVideo = async () => {
     try {
       setProcessingStatus("Extracting transcript...");
+      setError(null); // Clear previous errors
 
       const response = await axios.post("/api/v1/generate-shorts", {
         youtube_url: youtubeUrl,
@@ -207,6 +210,7 @@ function VideoEditor() {
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to process video");
       setIsProcessing(false);
+      setRetryCount(0); // Reset retry count on API error
       setChatHistory((prev) => [
         ...prev,
         {
@@ -251,6 +255,7 @@ function VideoEditor() {
           shorts: generatedShorts,
           progress,
           percent,
+          error, // Add error to destructuring
         } = response.data;
 
         if (progress) {
@@ -272,10 +277,12 @@ function VideoEditor() {
         ) {
           clearInterval(poll);
           setProcessingProgress(100);
+          setRetryCount(0); // Reset retry count on success
 
           // Convert shorts to clips format
           const newClips = generatedShorts.map((short, idx) => ({
             id: idx + 1,
+            short_id: short.short_id, // Store backend short ID for publishing
             title: short.title || `Highlight ${idx + 1}`,
             startTime: formatTime(short.start_time),
             endTime: formatTime(short.end_time),
@@ -296,17 +303,64 @@ function VideoEditor() {
           ]);
         } else if (status === "failed") {
           clearInterval(poll);
-          setError("Video processing failed");
-          setIsProcessing(false);
+          
+          // Check if error is "No highlights found" and retry if under limit
+          // Use functional update to get current retry count
+          setRetryCount((currentRetryCount) => {
+            if (error === "No highlights found" && currentRetryCount < MAX_API_RETRIES) {
+              const newRetryCount = currentRetryCount + 1;
+              
+              setChatHistory((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  content: `⚠️ No highlights found. Retrying automatically (attempt ${newRetryCount}/${MAX_API_RETRIES})...`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+              
+              setProcessingStatus(`Retrying... (${newRetryCount}/${MAX_API_RETRIES})`);
+              setProcessingProgress(0);
+              
+              // Wait 3 seconds before retry
+              setTimeout(() => {
+                processVideo().then((interval) => {
+                  if (interval) {
+                    // New polling started
+                  }
+                });
+              }, 3000);
+              
+              return newRetryCount;
+            } else {
+              // Max retries reached or different error
+              setError(error || "Video processing failed");
+              setIsProcessing(false);
+              
+              const isMaxRetries = currentRetryCount >= MAX_API_RETRIES;
+              setChatHistory((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  content: `❌ ${error || "Video processing failed"}${isMaxRetries ? " (max retries reached)" : ""}`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+              
+              return 0; // Reset for next attempt
+            }
+          });
         } else if (attempts >= maxAttempts) {
           clearInterval(poll);
           setError("Processing timeout - please try again");
           setIsProcessing(false);
+          setRetryCount(0);
         }
       } catch (err) {
         clearInterval(poll);
         setError("Failed to check processing status");
         setIsProcessing(false);
+        setRetryCount(0);
         console.error("Error polling job status:", err);
       }
     }, 1000);
@@ -816,6 +870,18 @@ function VideoEditor() {
       return;
     }
 
+    if (!selectedClip?.short_id) {
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "⚠️ Cannot publish: Missing video ID. Please regenerate the clip.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
     setShowPublishModal(false);
 
     // Show publishing notification
@@ -828,21 +894,52 @@ function VideoEditor() {
       },
     ]);
 
-    // Simulate publishing
-    setTimeout(() => {
+    try {
+      // Map frontend platform names to backend platform names
+      const platformMap = {
+        youtube: "youtube_shorts",
+        instagram: "instagram",
+        tiktok: "tiktok",
+        facebook: "facebook",
+      };
+      
+      const mappedPlatforms = selectedPlatforms.map(
+        (platform) => platformMap[platform] || platform
+      );
+
+      // Call actual publishing API
+      const response = await axios.post("/api/v1/share", {
+        short_id: selectedClip.short_id,
+        platforms: mappedPlatforms,
+        text: publishSettings.description || publishSettings.title || "",
+      });
+
+      // Show success with publication details
+      const publicationCount = response.data.publications?.length || 0;
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `✅ Successfully published to ${selectedPlatforms.join(", ")}! Redirecting to dashboard...`,
+          content: `✅ Publishing started! ${publicationCount} publication(s) queued. Check dashboard for status.`,
           timestamp: new Date().toISOString(),
         },
       ]);
 
+      // Redirect to dashboard after a short delay
       setTimeout(() => {
         navigate("/dashboard");
-      }, 1500);
-    }, 2000);
+      }, 2000);
+    } catch (error) {
+      console.error("Publishing error:", error);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `❌ Publishing failed: ${error.response?.data?.detail || error.message || "Unknown error"}. Please try again.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
   };
 
   // Caption generation functions

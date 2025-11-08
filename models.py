@@ -24,6 +24,9 @@ class Project(Base):
     video_duration = Column(Integer)
     status = Column(String, default="processing")  # processing, completed, failed
     error_message = Column(Text, nullable=True)
+    transcript = Column(Text, nullable=True)  # Cached transcript to reduce API calls
+    transcript_fetched_at = Column(DateTime, nullable=True)  # Track when transcript was fetched
+    video_description = Column(Text, nullable=True)  # Cached video description
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

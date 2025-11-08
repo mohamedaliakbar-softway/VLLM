@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # YouTube Data API
     youtube_api_key: Optional[str] = None  # Optional - for YouTube Data API features
     
+    # YouTube OAuth 2.0 (for video uploads)
+    youtube_client_id: Optional[str] = None  # OAuth 2.0 Client ID
+    youtube_client_secret: Optional[str] = None  # OAuth 2.0 Client Secret
+    
     # YouTube Cookies (for bypassing bot detection)
     youtube_cookies_file: Optional[str] = None  # Path to cookies.txt file (optional)
     youtube_use_browser_cookies: bool = False  # Use browser cookies (disabled in server environment)
@@ -41,9 +45,13 @@ class Settings(BaseSettings):
     output_dir: str = "./output"
     
     # Sharing / Publishing
-    allowed_platforms: str = "linkedin,instagram,x"  # comma-separated
+    allowed_platforms: str = "linkedin,instagram,x,youtube_shorts,tiktok,facebook"  # comma-separated
     max_upload_mb: int = 250  # soft limit; actual APIs may vary
     share_max_retries: int = 3
+    
+    # Retry Configuration
+    highlight_retry_max_attempts: int = 3  # Number of retries if no highlights found
+    highlight_retry_delay: int = 2  # Initial delay in seconds between retries
 
 
 # Platform-specific video dimensions (width, height)

@@ -94,6 +94,26 @@ def add_short_columns():
                 pass
 
 
+def add_project_columns():
+    """Add transcript caching columns to projects table."""
+    additions = [
+        ("transcript", "TEXT"),
+        ("transcript_fetched_at", "TIMESTAMP"),
+        ("video_description", "TEXT"),
+    ]
+    for col, typ in additions:
+        if not column_exists("projects", col):
+            ddl = text(f"ALTER TABLE projects ADD COLUMN {col} {typ}")
+            try:
+                with engine.begin() as conn:
+                    conn.execute(ddl)
+                    print(f"Added column '{col}' to projects table")
+            except Exception as e:
+                # Ignore if column already exists or ALTER not supported
+                print(f"Could not add column '{col}': {e}")
+                pass
+
+
 def main():
     if not table_exists("publications"):
         create_publications_table()
@@ -105,6 +125,7 @@ def main():
         create_account_tokens_table()
 
     add_short_columns()
+    add_project_columns()
 
     print("Migration completed.")
 

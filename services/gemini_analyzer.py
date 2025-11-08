@@ -43,11 +43,12 @@ class GeminiAnalyzer:
             # Validate transcript
             transcript_length = len(transcript.strip()) if transcript else 0
             if not transcript or transcript_length < 50:
-                logger.warning(f"Transcript too short or empty (length: {transcript_length} chars)")
-                # Always return fallback if transcript is too short
-                if duration >= settings.short_duration_min:
-                    logger.info("Creating fallback highlights (transcript too short)")
+                logger.warning(f"Transcript too short or empty (length: {transcript_length} chars, duration: {duration}s)")
+                # Always return fallback if we have a valid video duration
+                if duration > 0:
+                    logger.info(f"Creating fallback highlights (transcript too short, duration: {duration}s)")
                     return self._create_fallback_highlights(duration, video_title or "")
+                logger.error("Cannot create highlights: transcript too short and duration is 0 or missing")
                 return []
             
             logger.info(f"Analyzing transcript (length: {transcript_length} chars, duration: {duration}s)")
@@ -69,20 +70,22 @@ class GeminiAnalyzer:
                 )
             except Exception as api_error:
                 logger.error(f"Gemini API error: {str(api_error)}")
-                # Always return fallback if API fails
-                if duration >= settings.short_duration_min:
-                    logger.info("Creating fallback highlights due to API error")
+                # Always return fallback if API fails and we have valid duration
+                if duration > 0:
+                    logger.info(f"Creating fallback highlights due to API error (duration: {duration}s)")
                     return self._create_fallback_highlights(duration, video_title or "")
+                logger.error(f"Cannot create fallback: API error and duration is 0 or missing")
                 raise
             
             # Parse the response to extract highlights
             response_text = response.text if response.text else ""
             if not response_text:
-                logger.error("Empty response from Gemini API")
-                # Always return fallback if empty response
-                if duration >= settings.short_duration_min:
-                    logger.info("Creating fallback highlights (empty Gemini response)")
+                logger.error(f"Empty response from Gemini API (duration: {duration}s)")
+                # Always return fallback if empty response and we have valid duration
+                if duration > 0:
+                    logger.info(f"Creating fallback highlights (empty Gemini response, duration: {duration}s)")
                     return self._create_fallback_highlights(duration, video_title or "")
+                logger.error("Cannot create fallback: empty Gemini response and duration is 0 or missing")
                 return []
             
             logger.debug(f"Gemini response preview: {response_text[:300]}...")
@@ -93,22 +96,25 @@ class GeminiAnalyzer:
             
             # ALWAYS ensure we have at least one highlight
             if not highlights:
-                logger.warning("No highlights found after parsing, creating fallback highlights")
-                if duration >= settings.short_duration_min:
+                logger.warning(f"No highlights found after parsing (duration: {duration}s), creating fallback highlights")
+                if duration > 0:
                     return self._create_fallback_highlights(duration, video_title or "")
+                logger.error("Cannot create fallback: no highlights found and duration is 0 or missing")
                 return []
             
             return highlights
         
         except Exception as e:
-            logger.error(f"Error analyzing transcript: {str(e)}", exc_info=True)
-            # Always return fallback on error
-            if duration >= settings.short_duration_min:
+            logger.error(f"Error analyzing transcript: {str(e)} (duration: {duration}s)", exc_info=True)
+            # Always return fallback on error if we have valid duration
+            if duration > 0:
                 try:
-                    logger.info("Creating fallback highlights due to error")
+                    logger.info(f"Creating fallback highlights due to error (duration: {duration}s)")
                     return self._create_fallback_highlights(duration, video_title or "")
-                except:
-                    pass
+                except Exception as fallback_error:
+                    logger.error(f"Failed to create fallback highlights: {str(fallback_error)}")
+            else:
+                logger.error("Cannot create fallback: error occurred and duration is 0 or missing")
             raise
     
     def analyze_video_for_highlights(
@@ -722,11 +728,25 @@ Return ONLY valid JSON, no additional text.
         """Create intelligent fallback highlights when Gemini doesn't find any."""
         highlights = []
         
+        # Ensure we have a valid duration (at least 15 seconds, or use the actual duration if less)
+        if duration <= 0:
+            logger.error(f"Invalid duration for fallback highlights: {duration}s")
+            # Use minimum duration as fallback
+            duration = settings.short_duration_min
+        
         # Create highlight from beginning (most important for hooks)
-        fallback_duration = min(30, duration, settings.short_duration_max)
+        # Use actual duration if it's less than 30 seconds, otherwise use 30 seconds max
+        fallback_duration = min(30, max(duration, settings.short_duration_min), settings.short_duration_max)
+        
+        # Ensure we don't exceed the actual video duration
+        if fallback_duration > duration:
+            fallback_duration = duration
+        
+        logger.info(f"Creating fallback highlight: 0s to {fallback_duration}s (video duration: {duration}s)")
+        
         highlights.append({
             "start_time": "00:00",
-            "end_time": f"00:{fallback_duration:02d}",
+            "end_time": self._seconds_to_timestamp(fallback_duration),
             "start_seconds": 0,
             "end_seconds": fallback_duration,
             "duration_seconds": fallback_duration,
@@ -756,6 +776,7 @@ Return ONLY valid JSON, no additional text.
                 "tracking_focus": "center of screen",
             })
         
+        logger.info(f"Created {len(highlights)} fallback highlight(s)")
         return highlights
     
     def _fallback_parse(self, response_text: str) -> List[Dict]:

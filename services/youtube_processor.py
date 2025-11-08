@@ -1,12 +1,15 @@
 """YouTube video downloader and processor."""
 import yt_dlp
 import os
+import time
+import traceback
 from pathlib import Path
 from typing import Optional, Dict, List
 from config import settings
 import logging
 import subprocess
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,9 @@ class YouTubeProcessor:
         self.cookies_file = getattr(settings, 'youtube_cookies_file', None)
         self.use_browser_cookies = getattr(settings, 'youtube_use_browser_cookies', True)
         self.browser = getattr(settings, 'youtube_browser', 'chrome').lower()
+        # Rate limiting to prevent 429 errors
+        self.last_request_time = 0
+        self.min_request_interval = 0.5  # 500ms minimum delay between requests
     
     def get_video_info(self, youtube_url: str, video_id: Optional[str] = None) -> dict:
         """
@@ -32,6 +38,9 @@ class YouTubeProcessor:
         Returns:
             dict with video info including duration and title
         """
+        # Rate limiting to prevent 429 errors
+        self._rate_limit()
+        
         try:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
@@ -43,7 +52,7 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = self._extract_info_with_timeout(ydl, youtube_url, download=False)
                 except yt_dlp.utils.DownloadError as e:
                     error_msg = str(e)
                     if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
@@ -87,6 +96,9 @@ class YouTubeProcessor:
         Returns:
             dict with video info including file path and duration
         """
+        # Rate limiting to prevent 429 errors
+        self._rate_limit()
+        
         try:
             # Extract video ID if not provided
             if not video_id:
@@ -104,7 +116,7 @@ class YouTubeProcessor:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get video info first
                 try:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = self._extract_info_with_timeout(ydl, youtube_url, download=False)
                 except yt_dlp.utils.DownloadError as e:
                     error_msg = str(e)
                     if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
@@ -155,6 +167,9 @@ class YouTubeProcessor:
         Returns:
             dict with transcript text and video metadata
         """
+        # Rate limiting to prevent 429 errors
+        self._rate_limit()
+        
         try:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
@@ -170,7 +185,7 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = self._extract_info_with_timeout(ydl, youtube_url, download=False)
                 except yt_dlp.utils.DownloadError as e:
                     error_msg = str(e)
                     if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
@@ -239,7 +254,18 @@ class YouTubeProcessor:
                 
                 duration = info.get('duration', 0)
                 
-                logger.info(f"Extracted transcript for video {video_id}, length: {len(transcript_text)} chars")
+                # Validate duration
+                if duration <= 0:
+                    logger.warning(f"WARNING: Duration is {duration}s for video {video_id}. This may cause highlight detection to fail!")
+                    logger.warning(f"Video info keys: {list(info.keys())}")
+                    # Try to get duration from other fields
+                    if 'duration_string' in info:
+                        logger.info(f"Found duration_string: {info.get('duration_string')}")
+                
+                logger.info(f"Extracted transcript for video {video_id}:")
+                logger.info(f"  - Transcript length: {len(transcript_text)} chars")
+                logger.info(f"  - Duration: {duration}s")
+                logger.info(f"  - Title: {info.get('title', 'N/A')}")
                 
                 return {
                     'transcript': transcript_text,
@@ -252,7 +278,10 @@ class YouTubeProcessor:
         
         except Exception as e:
             logger.error(f"Error extracting transcript: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Return empty transcript on error - analysis can still proceed with title/description
+            # But log a warning that duration is 0
+            logger.warning("Returning empty transcript with duration=0 - highlight detection will likely fail!")
             return {
                 'transcript': '',
                 'duration': 0,
@@ -279,6 +308,9 @@ class YouTubeProcessor:
         Returns:
             List of downloaded segment file paths
         """
+        # Rate limiting to prevent 429 errors
+        self._rate_limit()
+        
         try:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
@@ -294,7 +326,7 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = self._extract_info_with_timeout(ydl, youtube_url, download=False)
                 except yt_dlp.utils.DownloadError as e:
                     error_msg = str(e)
                     if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
@@ -467,7 +499,42 @@ class YouTubeProcessor:
         opts.setdefault('retries', 3)
         opts.setdefault('fragment_retries', 3)
         
+        # Add timeout configuration to prevent hanging
+        opts.setdefault('socket_timeout', 30)  # 30 second socket timeout
+        opts.setdefault('extractor_timeout', 60)  # 60 second extractor timeout
+        
         return opts
+    
+    def _rate_limit(self):
+        """Ensure minimum time between requests to prevent 429 errors."""
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_request_interval:
+            sleep_time = self.min_request_interval - elapsed
+            time.sleep(sleep_time)
+        self.last_request_time = time.time()
+    
+    def _extract_info_with_timeout(self, ydl, url: str, download: bool = False, timeout: int = 60):
+        """
+        Extract video info with timeout to prevent hanging.
+        
+        Args:
+            ydl: yt-dlp YoutubeDL instance
+            url: YouTube URL
+            download: Whether to download (default: False)
+            timeout: Timeout in seconds (default: 60)
+            
+        Returns:
+            Video info dictionary
+            
+        Raises:
+            TimeoutError: If extraction takes longer than timeout
+        """
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(ydl.extract_info, url, download=download)
+            try:
+                return future.result(timeout=timeout)
+            except FutureTimeoutError:
+                raise TimeoutError(f"yt-dlp extract_info timed out after {timeout}s")
     
     def _extract_video_id(self, url: str) -> str:
         """Extract video ID from YouTube URL."""
