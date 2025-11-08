@@ -1,0 +1,220 @@
+6:42:52 AM [vite] Internal server error: Failed to load PostCSS config (searchPath: /home/runner/workspace/frontend): [Error] Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:642:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:591:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:574:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:236:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:130:49)
+  Plugin: vite:css
+  File: /home/runner/workspace/frontend/src/index.css
+6:42:52 AM [vite] (client) Pre-transform error: Failed to load PostCSS config (searchPath: /home/runner/workspace/frontend): [Error] Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:642:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:591:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:574:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:236:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:130:49)
+  Plugin: vite:css
+  File: /home/runner/workspace/frontend/src/index.css
+6:42:53 AM [vite] Internal server error: Failed to load PostCSS config (searchPath: /home/runner/workspace/frontend): [Error] Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:642:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:591:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:574:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:236:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:130:49)
+  Plugin: vite:css
+  File: /home/runner/workspace/frontend/src/index.css
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-slot" from "src/components/ui/button.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/button.jsx:2:21
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { Slot } from "@radix-ui/react-slot";
+     |                        ^
+  4  |  import { cva } from "class-variance-authority";
+  5  |  import { cn } from "@/lib/utils";
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-slot" from "src/components/ui/button.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/button.jsx:2:21
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { Slot } from "@radix-ui/react-slot";
+     |                        ^
+  4  |  import { cva } from "class-variance-authority";
+  5  |  import { cn } from "@/lib/utils"; (x2)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "class-variance-authority" from "src/components/ui/badge.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/badge.jsx:2:20
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { cva } from "class-variance-authority";
+     |                       ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const badgeVariants = cva(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-slot" from "src/components/ui/button.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/button.jsx:2:21
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { Slot } from "@radix-ui/react-slot";
+     |                        ^
+  4  |  import { cva } from "class-variance-authority";
+  5  |  import { cn } from "@/lib/utils";
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "class-variance-authority" from "src/components/ui/badge.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/badge.jsx:2:20
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { cva } from "class-variance-authority";
+     |                       ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const badgeVariants = cva(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "class-variance-authority" from "src/components/ui/alert.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/alert.jsx:2:20
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import { cva } from "class-variance-authority";
+     |                       ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const alertVariants = cva(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |  
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x2)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x3)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x4)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x5)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x6)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-slider" from "src/components/ui/slider.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/slider.jsx:2:33
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import * as SliderPrimitive from "@radix-ui/react-slider";
+     |                                    ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const Slider = React.forwardRef(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-dialog" from "src/components/ui/dialog.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/dialog.jsx:2:33
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import * as DialogPrimitive from "@radix-ui/react-dialog";
+     |                                    ^
+  4  |  import { X } from "lucide-react";
+  5  |  import { cn } from "@/lib/utils";
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-scroll-area" from "src/components/ui/scroll-area.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/scroll-area.jsx:2:37
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+     |                                        ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const ScrollArea = React.forwardRef(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "@radix-ui/react-separator" from "src/components/ui/separator.jsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/components/ui/separator.jsx:2:36
+  1  |  import { jsxDEV } from "react/jsx-dev-runtime";
+  2  |  import * as React from "react";
+  3  |  import * as SeparatorPrimitive from "@radix-ui/react-separator";
+     |                                       ^
+  4  |  import { cn } from "@/lib/utils";
+  5  |  const Separator = React.forwardRef(
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |  
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x2)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x3)
+6:42:53 AM [vite] (client) Pre-transform error: Failed to resolve import "clsx" from "src/lib/utils.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/runner/workspace/frontend/src/lib/utils.js:1:22
+  1  |  import { clsx } from "clsx"
+     |                        ^
+  2  |  import { twMerge } from "tailwind-merge"
+  3  |   (x4)
+6:43:00 AM [vite] Internal server error: Failed to load PostCSS config (searchPath: /home/runner/workspace/frontend): [Error] Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:642:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:591:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:574:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:236:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:130:49)
+  Plugin: vite:css
+  File: /home/runner/workspace/frontend/src/index.css
+6:43:08 AM [vite] Internal server error: Failed to load PostCSS config (searchPath: /home/runner/workspace/frontend): [Error] Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tailwindcss' imported from /home/runner/workspace/frontend/postcss.config.js
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:642:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:591:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:574:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:236:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:130:49)
+  Plugin: vite:css
+  File: /home/runner/workspace/frontend/src/index.css (x2)
