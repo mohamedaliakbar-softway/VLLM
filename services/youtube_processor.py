@@ -7,6 +7,7 @@ from config import settings
 import logging
 import subprocess
 import json
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -183,10 +184,27 @@ class YouTubeProcessor:
                     if not preferred:
                         preferred = tracks[0]
                     subtitle_url = preferred.get('url')
+                    
+                    # Retry logic for rate limiting (429 errors)
                     import requests
-                    resp = requests.get(subtitle_url)
-                    resp.raise_for_status()
-                    transcript_text = self._parse_subtitles(resp.text)
+                    max_retries = 3
+                    retry_delay = 2  # seconds
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            resp = requests.get(subtitle_url, timeout=10)
+                            resp.raise_for_status()
+                            transcript_text = self._parse_subtitles(resp.text)
+                            break  # Success, exit retry loop
+                        except requests.exceptions.HTTPError as e:
+                            if e.response.status_code == 429 and attempt < max_retries - 1:
+                                # Rate limited, wait and retry
+                                wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                                logger.warning(f"Rate limited (429), retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                                time.sleep(wait_time)
+                            else:
+                                # Other error or final attempt, raise
+                                raise
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
@@ -258,17 +276,40 @@ class YouTubeProcessor:
                     
                     # Use FFmpeg to download only the segment
                     # This is MUCH faster than downloading the entire video
+                    # NOTE: We need to re-encode to fix duration metadata issues
                     cmd = [
                         'ffmpeg',
                         '-ss', str(start_time),  # Start time
                         '-i', video_url,  # Input URL
                         '-t', str(duration),  # Duration
-                        '-c', 'copy',  # Copy streams (no re-encoding, super fast)
+                        '-c:v', 'libx264',  # Re-encode video (fixes duration metadata)
+                        '-preset', 'ultrafast',  # Fast encoding
+                        '-crf', '23',  # Good quality
+                        '-c:a', 'aac',  # Re-encode audio
+                        '-b:a', '128k',  # Audio bitrate
+                        '-movflags', '+faststart',  # Enable fast start for web playback
                         '-y',  # Overwrite output
                         str(output_path)
                     ]
                     
-                    subprocess.run(cmd, capture_output=True, check=True)
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if result.returncode != 0:
+                        logger.error(f"FFmpeg error downloading segment {idx}:")
+                        logger.error(f"STDOUT: {result.stdout}")
+                        logger.error(f"STDERR: {result.stderr}")
+                        raise Exception(f"FFmpeg failed to download segment {idx}: {result.stderr}")
+                    
+                    # Verify the file was created and has valid duration
+                    if not output_path.exists():
+                        raise Exception(f"Segment file not created: {output_path}")
+                    
+                    # Check file size (should be > 0)
+                    file_size = output_path.stat().st_size
+                    if file_size == 0:
+                        raise Exception(f"Segment file is empty: {output_path}")
+                    
+                    logger.info(f"Downloaded segment {idx}: {output_path} ({file_size / 1024 / 1024:.2f} MB)")
                     
                     end_time = start_time + duration
                     downloaded_segments.append({
@@ -281,8 +322,6 @@ class YouTubeProcessor:
                         'end_time': end_time,  # Add for convenience
                         'end_seconds': end_time,  # Add for consistency
                     })
-                    
-                    logger.info(f"Downloaded segment {idx}: {output_path}")
             
             return downloaded_segments
         
