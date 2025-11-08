@@ -1,7 +1,7 @@
 # Video Shorts Generator - Replit Setup
 
 ## Overview
-An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). Uses Google's Gemini AI to identify the most compelling segments. Now with full user authentication via Replit Auth!
+An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). Uses Google's Gemini AI to identify the most compelling segments.
 
 ## Project Type
 - **Backend**: FastAPI REST API (Python 3.11)
@@ -114,31 +114,17 @@ Other settings are configured in `config.py` with sensible defaults:
    - Right: Properties panel for clip customization
 7. **Publishing**: Export and share generated shorts
 
-## Authentication
-- **Replit Auth Integration**: Users can sign in using Google, GitHub, Twitter, Apple, or email/password
-- **User Management**: User profiles stored in PostgreSQL database
-- **Session Management**: Secure session cookies with 7-day expiration
-- **Protected Routes**: Backend endpoints can require authentication
-- **OAuth Flow**: Full PKCE-compliant OAuth 2.0 implementation
-- **User Profile Display**: Shows user name and profile picture in navigation bar
-
 ## Recent Changes
-- November 8, 2025: **USER AUTHENTICATION ADDED**
-  - **Full Replit OAuth integration** with support for Google, GitHub, Twitter, Apple, and email/password login
-  - **User database**: PostgreSQL users table stores authenticated user profiles
-  - **Session management**: Secure HTTP-only cookies with 7-day persistence
-  - **Authentication endpoints**: `/auth/login`, `/auth/logout`, `/auth/callback`, `/auth/me`
-  - **Frontend integration**: Sign In/Logout buttons, user profile display with avatar
-  - **Proxy configuration**: Vite proxy configured to forward both `/api` and `/auth` requests to backend
-  - **Security**: PKCE-compliant OAuth flow with state and nonce validation
-- November 8, 2025: **CRITICAL BUG FIX - Backend Import Conflict Resolved**
-  - **Fixed SDK conflict**: Standardized all Gemini AI imports to use `google-genai` SDK
-  - **Updated caption_generator.py**: Migrated from old `google.generativeai` to new `from google import genai`
-  - **Proper API usage**: Fixed audio transcription to use typed `types.Content` with `types.Part` and `types.Blob`
-  - **Backend now starts**: Resolved import errors that prevented FastAPI server from running on port 8000
-  - **Auth flow working**: Sign In button now properly redirects to Replit OAuth (previously showed blank page)
-  - **Health check passing**: Backend responds correctly at `/health` endpoint
-  - **Architect reviewed**: All changes verified for correct SDK usage and runtime compatibility
+- November 8, 2025: **CRITICAL BUG FIX - MoviePy Import Resolved & Authentication Removed**
+  - **Fixed MoviePy import**: Updated all imports from `moviepy.editor` to `moviepy` for compatibility with MoviePy 2.x
+  - **Updated services**: Fixed imports in `video_clipper.py` and `smart_cropper.py`
+  - **Removed all authentication**: Deleted auth.py, session middleware, auth routes, and auth UI per user request
+  - **Frontend cleanup**: Removed Sign In/Logout buttons, user state, and auth API calls from Landing page
+  - **Proxy cleanup**: Removed `/auth` proxy configuration from vite.config.js
+  - **Backend now starts**: Both backend and frontend workflows running successfully
+  - **Health check passing**: Backend responds correctly at `/health` and `/` endpoints
+  - **Application runs unauthenticated**: All features work without requiring user login
+  - **Architect reviewed**: All changes verified for correctness and runtime compatibility
 
 - November 8, 2025: **DATABASE PERSISTENCE ADDED**
   - **Created PostgreSQL database schema** with `projects` and `shorts` tables

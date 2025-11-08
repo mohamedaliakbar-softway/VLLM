@@ -1,5 +1,5 @@
 """Video clipping service for creating shorts from highlights."""
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging

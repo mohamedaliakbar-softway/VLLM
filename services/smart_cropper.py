@@ -1,7 +1,7 @@
 """Smart cropping service with intelligent subject tracking."""
 import cv2
 import numpy as np
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from typing import Dict, List, Tuple, Optional
 import logging
 from scipy.interpolate import interp1d, CubicSpline
