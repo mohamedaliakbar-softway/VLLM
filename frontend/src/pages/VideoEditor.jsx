@@ -13,6 +13,7 @@ function VideoEditor() {
   const navigate = useNavigate();
   const location = useLocation();
   const videoRef = useRef(null);
+  const hasProcessedRef = useRef(false); // Track if video has been processed to prevent double submission
   
   const youtubeUrl = location.state?.youtubeUrl;
   const videoId = extractVideoId(youtubeUrl);
@@ -64,6 +65,10 @@ function VideoEditor() {
   // Trigger video processing on mount
   useEffect(() => {
     if (!youtubeUrl) return;
+    
+    // Prevent double submission (React StrictMode runs effects twice in dev)
+    if (hasProcessedRef.current) return;
+    hasProcessedRef.current = true;
 
     let pollInterval = null;
 
