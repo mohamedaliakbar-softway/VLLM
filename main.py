@@ -2,6 +2,7 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
 import logging
@@ -9,6 +10,7 @@ import uuid
 import time
 from pathlib import Path
 import asyncio
+import os
 
 from config import settings
 from services.youtube_processor import YouTubeProcessor
@@ -23,6 +25,7 @@ from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
 from models import Project, Short, Publication, AccountToken
 from migrate import main as run_migrations
+import auth
 
 # Configure logging
 logging.basicConfig(
@@ -38,6 +41,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add session middleware for authentication
+SESSION_SECRET = os.environ.get("SESSION_SECRET")
+if not SESSION_SECRET:
+    logger.warning("SESSION_SECRET not set, using default (not secure for production)")
+    SESSION_SECRET = "dev-secret-key-change-in-production"
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="session",
+    max_age=7 * 24 * 60 * 60,
+    same_site="lax",
+    https_only=False,
+)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +64,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register authentication routes
+app.include_router(auth.router)
 
 # Run database migrations on startup
 @app.on_event("startup")
