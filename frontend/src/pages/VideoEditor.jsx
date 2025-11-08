@@ -89,7 +89,8 @@ function VideoEditor() {
         
         const response = await axios.post('/api/v1/generate-shorts', {
           youtube_url: youtubeUrl,
-          max_shorts: 3,
+          max_shorts: 1,
+          "platform": "youtube_shorts"
         });
 
         setProcessingStatus('AI analyzing highlights...');
