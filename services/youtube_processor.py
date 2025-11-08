@@ -216,55 +216,61 @@ class YouTubeProcessor:
                         break
                 
                 if tracks:
-                    # Prefer VTT, then JSON3/SRV3, then TTML/SRV1/SRV2, else first available
-                    preferred = None
-                    for ext in ['vtt', 'json3', 'srv3', 'ttml', 'srv1', 'srv2']:
-                        for t in tracks:
-                            if t.get('ext') == ext:
-                                preferred = t
-                                break
-                        if preferred:
-                            break
-                    if not preferred:
-                        preferred = tracks[0]
-                    subtitle_url = preferred.get('url')
-                    import requests
-                    import time
+                    # Use yt-dlp to download subtitles directly (bypasses rate limiting)
+                    # yt-dlp has better evasion techniques than direct HTTP requests
+                    import tempfile
+                    import os
                     
-                    # Retry logic with optimized backoff for rate limiting
-                    max_retries = 3  # Reduced from 5 to 3 for faster failure
-                    base_retry_delay = 2  # Start with 2 seconds (was 5s)
+                    subtitle_temp_dir = tempfile.mkdtemp(prefix="yt_subs_")
+                    try:
+                        logger.info(f"Downloading subtitles using yt-dlp for video {video_id}...")
+                        
+                        # Configure yt-dlp to download subtitles only
+                        sub_opts = {
+                            'skip_download': True,  # Don't download video
+                            'writesubtitles': True,  # Download subtitles
+                            'writeautomaticsub': True,  # Include auto-generated
+                            'subtitleslangs': ['en'],  # English only
+                            'subtitlesformat': 'vtt',  # Prefer VTT format
+                            'outtmpl': os.path.join(subtitle_temp_dir, '%(id)s.%(ext)s'),
+                            'quiet': True,
+                            'no_warnings': True,
+                            'extract_flat': False
+                        }
+                        
+                        # Use same cookies/headers if configured
+                        if self.cookies_file and os.path.exists(self.cookies_file):
+                            sub_opts['cookiefile'] = self.cookies_file
+                        if self.use_browser_cookies:
+                            sub_opts['cookiesfrombrowser'] = (self.browser_name, None, None, None)
+                        
+                        # Download subtitles using yt-dlp
+                        with yt_dlp.YoutubeDL(sub_opts) as ydl_sub:
+                            ydl_sub.download([youtube_url])
+                        
+                        # Find and read the downloaded subtitle file
+                        subtitle_files = [f for f in os.listdir(subtitle_temp_dir) 
+                                        if f.endswith(('.vtt', '.en.vtt'))]
+                        
+                        if subtitle_files:
+                            subtitle_path = os.path.join(subtitle_temp_dir, subtitle_files[0])
+                            with open(subtitle_path, 'r', encoding='utf-8') as f:
+                                subtitle_content = f.read()
+                            transcript_text = self._parse_subtitles(subtitle_content)
+                            logger.info(f"✅ Successfully downloaded subtitles via yt-dlp")
+                        else:
+                            logger.warning(f"No subtitle files found after yt-dlp download")
                     
-                    for attempt in range(max_retries):
+                    except Exception as e:
+                        logger.warning(f"yt-dlp subtitle download failed: {e}, trying Vosk fallback...")
+                    
+                    finally:
+                        # Cleanup temp directory
                         try:
-                            resp = requests.get(subtitle_url, timeout=20)  # Reduced timeout from 30s
-                            resp.raise_for_status()
-                            transcript_text = self._parse_subtitles(resp.text)
-                            break  # Success, exit retry loop
-                        except requests.exceptions.HTTPError as http_err:
-                            if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                                # Rate limited - wait with optimized exponential backoff
-                                wait_time = base_retry_delay * (2 ** attempt)  # 2s, 4s, 8s (was 5s, 10s, 20s, 40s, 80s)
-                                logger.warning(
-                                    f"Rate limited (429) on attempt {attempt + 1}/{max_retries} for video {video_id}, "
-                                    f"waiting {wait_time}s before retry..."
-                                )
-                                time.sleep(wait_time)
-                            else:
-                                # Re-raise on last attempt or non-429 errors
-                                logger.error(f"Failed to fetch transcript after {attempt + 1} attempts: {http_err}")
-                                raise
-                        except Exception as e:
-                            if attempt == max_retries - 1:
-                                # Last attempt, re-raise
-                                logger.error(f"Failed to fetch transcript after {max_retries} attempts: {str(e)}")
-                                raise
-                            # Other errors - retry with optimized backoff
-                            wait_time = base_retry_delay * (2 ** attempt)
-                            logger.warning(
-                                f"Error on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s: {str(e)}"
-                            )
-                            time.sleep(wait_time)
+                            import shutil
+                            shutil.rmtree(subtitle_temp_dir, ignore_errors=True)
+                        except:
+                            pass
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
