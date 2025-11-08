@@ -63,16 +63,16 @@ function VideoEditor() {
   const [retryCount, setRetryCount] = useState(0);
   const MAX_API_RETRIES = 3; // Maximum retries at API level
 
-  // Loading animation states
+  // Loading steps matching backend processing - distributed across ~5 minutes total
   const [loadingSteps] = useState([
-    { id: 1, text: "Connecting to YouTube", completed: false },
-    { id: 2, text: "Extracting video transcript", completed: false },
-    { id: 3, text: "Analyzing content with AI", completed: false },
-    { id: 4, text: "Identifying key highlights", completed: false },
-    { id: 5, text: "Downloading video segments", completed: false },
-    { id: 6, text: "Applying smart cropping", completed: false },
-    { id: 7, text: "Generating short clips", completed: false },
-    { id: 8, text: "Finalizing your videos", completed: false },
+    { id: 1, text: "Connecting to YouTube", duration: 30000 },       // 30s
+    { id: 2, text: "Extracting video transcript", duration: 40000 }, // 40s
+    { id: 3, text: "Analyzing content with AI", duration: 50000 },   // 50s
+    { id: 4, text: "Identifying key highlights", duration: 45000 },  // 45s
+    { id: 5, text: "Downloading video segments", duration: 35000 },  // 35s
+    { id: 6, text: "Applying smart cropping", duration: 40000 },     // 40s
+    { id: 7, text: "Generating short clips", duration: 40000 },      // 40s
+    { id: 8, text: "Finalizing your videos", duration: 20000 },      // 20s
   ]);
   const [currentLoadingStep, setCurrentLoadingStep] = useState(0);
 
@@ -186,14 +186,19 @@ function VideoEditor() {
     }
   }, [youtubeUrl, navigate]);
 
-  // Update loading step based on processing progress
+  // Auto-advance loading steps every 60+ seconds
   useEffect(() => {
-    // Each step represents 12.5% of progress (100% / 8 steps)
-    const stepIndex = Math.floor(processingProgress / 12.5);
-    if (stepIndex !== currentLoadingStep && stepIndex <= 8) {
-      setCurrentLoadingStep(stepIndex);
-    }
-  }, [processingProgress, currentLoadingStep]);
+    if (!isProcessing) return;
+
+    const timer = setTimeout(() => {
+      setCurrentLoadingStep((current) => {
+        // Cycle through steps 0-4, then back to 0
+        return (current + 1) % loadingSteps.length;
+      });
+    }, loadingSteps[currentLoadingStep]?.duration || 70000);
+
+    return () => clearTimeout(timer);
+  }, [currentLoadingStep, isProcessing, loadingSteps]);
 
   // Smooth progress animation - fills proportionally between backend updates
   useEffect(() => {
@@ -204,10 +209,6 @@ function VideoEditor() {
 
     // If current progress is less than target, animate it
     if (processingProgress < targetProgress) {
-      const progressDiff = targetProgress - processingProgress;
-      
-      // Animate smoothly over time - increment by 1 each time
-      // The speed depends on how far we need to go
       const updateInterval = 100; // Update every 100ms
       
       progressIntervalRef.current = setInterval(() => {
@@ -1711,9 +1712,9 @@ function VideoEditor() {
         {/* Center Panel - Video Preview (Fixed Size) */}
         <main className="flex flex-col bg-white p-6 overflow-hidden">
           <div className="flex-1 flex items-center justify-center min-h-0">
-            <div className="relative w-[360px] aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
+            <div className="relative w-[640px] aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
-                // Loading animation with strike-through list
+                // Loading animation with shimmer text
                 <div className="relative w-full h-full rounded-3xl overflow-hidden">
                   {thumbnailUrl && (
                     <img
@@ -1723,9 +1724,10 @@ function VideoEditor() {
                     />
                   )}
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
-                    {/* Loading steps list */}
-                    <div className="relative z-10 w-full max-w-md">
-                      <div className="mb-6 text-center">
+                    {/* Centered loader content */}
+                    <div className="relative z-10 flex flex-col items-center justify-center">
+                      {/* Original loader with "Generating" text and circle exactly as before */}
+                      <div className="text-center">
                         <div className="loader-wrapper-processing">
                           <span className="loader-letter">G</span>
                           <span className="loader-letter">e</span>
@@ -1739,106 +1741,12 @@ function VideoEditor() {
                           <span className="loader-letter">g</span>
                           <div className="loader"></div>
                         </div>
-                        <p className="text-lg font-semibold text-white mt-4">
-                          {Math.round(processingProgress)}%
-                        </p>
                       </div>
-
-                      <div className="bg-transparent rounded-2xl p-6">
-                        <div className="loading-steps-wrapper">
-                          <div className="loading-steps-scroll">
-                            {loadingSteps.map((step, index) => {
-                              const isCompleted = currentLoadingStep > index;
-                              const isCurrent = currentLoadingStep === index;
-
-                              // Only show current step and next step (2 lines visible)
-                              const shouldShow =
-                                index === currentLoadingStep ||
-                                index === currentLoadingStep + 1;
-                              if (!shouldShow) return null;
-
-                              let stepClassName = "bg-white/20";
-                              if (isCompleted) {
-                                stepClassName = "bg-green-500";
-                              } else if (isCurrent) {
-                                stepClassName = "bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse";
-                              }
-
-                              let textClassName = "text-gray-500";
-                              if (isCompleted) {
-                                textClassName = "text-gray-400 line-through";
-                              } else if (isCurrent) {
-                                textClassName = "text-white";
-                              }
-
-                              return (
-                                <div
-                                  key={step.id}
-                                  className={`
-                                  loading-step-item transition-all duration-500 transform
-                                  ${isCurrent ? "scale-105" : "scale-100"}
-                                  ${index === currentLoadingStep + 1 ? "opacity-60" : "opacity-100"}
-                                `}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div
-                                      className={`
-                                    w-5 h-5 rounded-full flex items-center justify-center transition-all duration-500
-                                    ${stepClassName}
-                                  `}
-                                    >
-                                      {isCompleted && (
-                                        <svg
-                                          className="w-3 h-3 text-white"
-                                          fill="none"
-                                          viewBox="0 0 24 24"
-                                          stroke="currentColor"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={3}
-                                            d="M5 13l4 4L19 7"
-                                          />
-                                        </svg>
-                                      )}
-                                      {isCurrent && (
-                                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                                      )}
-                                    </div>
-                                    <span
-                                      className={`
-                                    text-sm font-medium transition-all duration-500
-                                    ${textClassName}
-                                  `}
-                                    >
-                                      {step.text}
-                                    </span>
-                                  </div>
-                                  {isCurrent && (
-                                    <div className="ml-8 mt-1">
-                                      <div className="h-1 bg-white/20 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-1000"
-                                          style={{
-                                            width: `${(processingProgress % 12.5) * 8}%`,
-                                          }}
-                                        ></div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 text-center">
-                        <p className="text-sm text-white/70">
-                          {processingStatus}
-                        </p>
-                      </div>
+                      
+                      {/* Shimmer text below - left to right */}
+                      <p className="text-lg font-semibold mt-4 bg-gradient-to-r from-transparent via-white to-transparent bg-clip-text text-transparent animate-shimmer-text" style={{ backgroundSize: '200% auto' }}>
+                        {loadingSteps[currentLoadingStep]?.text || "Processing..."}
+                      </p>
                     </div>
                   </div>
                 </div>

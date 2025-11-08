@@ -48,3 +48,4 @@ pyjwt
 authlib
 itsdangerous
 vosk
+google-auth-oauthlib

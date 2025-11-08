@@ -917,6 +917,282 @@ async def get_publication_status(publication_id: str):
         db.close()
 
 
+@app.post("/api/v1/share/{publication_id}/retry")
+async def retry_publication(publication_id: str, background_tasks: BackgroundTasks):
+    """Retry a failed publication."""
+    db = SessionLocal()
+    try:
+        pub = db.query(Publication).filter(Publication.id == publication_id).first()
+        if not pub:
+            raise HTTPException(status_code=404, detail="Publication not found")
+        
+        if pub.status == "published":
+            raise HTTPException(status_code=400, detail="Publication already succeeded")
+        
+        # Reset status to queued
+        pub.status = "queued"
+        pub.error_message = None
+        db.commit()
+        
+        # Queue background task
+        background_tasks.add_task(_publish_publication_async, publication_id)
+        
+        return {
+            "publication_id": pub.id,
+            "status": "queued",
+            "message": "Publication queued for retry"
+        }
+    finally:
+        db.close()
+
+
+# YouTube OAuth 2.0 Endpoints
+YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+YOUTUBE_REDIRECT_URI = os.getenv("YOUTUBE_REDIRECT_URI", "http://localhost:5173/youtube-oauth-callback")
+
+
+@app.get("/api/v1/youtube/oauth/authorize")
+async def youtube_oauth_authorize():
+    """Initiate YouTube OAuth 2.0 flow."""
+    try:
+        from google_auth_oauthlib.flow import Flow
+        import secrets
+        
+        if not settings.youtube_client_id or not settings.youtube_client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail="YouTube OAuth not configured. Please set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET."
+            )
+        
+        # Create OAuth flow
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": settings.youtube_client_id,
+                    "client_secret": settings.youtube_client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [YOUTUBE_REDIRECT_URI]
+                }
+            },
+            scopes=YOUTUBE_SCOPES
+        )
+        flow.redirect_uri = YOUTUBE_REDIRECT_URI
+        
+        # Generate state for CSRF protection
+        state = secrets.token_urlsafe(32)
+        
+        # Get authorization URL
+        authorization_url, _ = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            state=state,
+            prompt='consent'  # Force consent to get refresh token
+        )
+        
+        return {
+            "authorization_url": authorization_url,
+            "state": state
+        }
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="google-auth-oauthlib not installed. Please install it: pip install google-auth-oauthlib"
+        )
+    except Exception as e:
+        logger.error(f"YouTube OAuth authorize error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"OAuth authorization failed: {str(e)}")
+
+
+@app.get("/api/v1/youtube/oauth/callback")
+async def youtube_oauth_callback(code: str, state: Optional[str] = None):
+    """Handle YouTube OAuth 2.0 callback and store tokens."""
+    db = SessionLocal()
+    try:
+        from google_auth_oauthlib.flow import Flow
+        from google.oauth2.credentials import Credentials
+        
+        if not settings.youtube_client_id or not settings.youtube_client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail="YouTube OAuth not configured."
+            )
+        
+        # Create OAuth flow
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": settings.youtube_client_id,
+                    "client_secret": settings.youtube_client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [YOUTUBE_REDIRECT_URI]
+                }
+            },
+            scopes=YOUTUBE_SCOPES
+        )
+        flow.redirect_uri = YOUTUBE_REDIRECT_URI
+        
+        # Exchange code for tokens
+        flow.fetch_token(code=code)
+        credentials = flow.credentials
+        
+        # Get channel info to identify the account
+        try:
+            from googleapiclient.discovery import build
+            youtube = build('youtube', 'v3', credentials=credentials)
+            channel_response = youtube.channels().list(part='snippet', mine=True).execute()
+            
+            if channel_response.get('items'):
+                channel = channel_response['items'][0]
+                channel_id = channel['id']
+                channel_title = channel['snippet'].get('title', 'Unknown')
+            else:
+                channel_id = "unknown"
+                channel_title = "Unknown"
+        except Exception as e:
+            logger.warning(f"Could not fetch channel info: {str(e)}")
+            channel_id = "unknown"
+            channel_title = "Unknown"
+        
+        # Check if token already exists for this platform
+        existing_token = db.query(AccountToken).filter(
+            AccountToken.platform == "youtube_shorts"
+        ).first()
+        
+        if existing_token:
+            # Update existing token
+            existing_token.access_token = credentials.token
+            existing_token.refresh_token = credentials.refresh_token or existing_token.refresh_token
+            existing_token.expires_at = credentials.expiry
+            token_id = existing_token.id
+            logger.info(f"Updated YouTube token {token_id}")
+        else:
+            # Create new token
+            token_id = str(uuid.uuid4())
+            new_token = AccountToken(
+                id=token_id,
+                platform="youtube_shorts",
+                access_token=credentials.token,
+                refresh_token=credentials.refresh_token,
+                expires_at=credentials.expiry
+            )
+            db.add(new_token)
+            logger.info(f"Created new YouTube token {token_id}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "YouTube account connected successfully",
+            "channel_id": channel_id,
+            "channel_title": channel_title,
+            "token_id": token_id
+        }
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="google-auth-oauthlib not installed. Please install it: pip install google-auth-oauthlib"
+        )
+    except Exception as e:
+        logger.error(f"YouTube OAuth callback error: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"OAuth callback failed: {str(e)}")
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/youtube/oauth/status")
+async def youtube_oauth_status():
+    """Check if YouTube account is connected and token is valid."""
+    db = SessionLocal()
+    try:
+        token = db.query(AccountToken).filter(
+            AccountToken.platform == "youtube_shorts"
+        ).first()
+        
+        if not token:
+            return {
+                "connected": False,
+                "message": "YouTube account not connected"
+            }
+        
+        # Check if token is expired
+        is_expired = False
+        if token.expires_at:
+            from datetime import datetime, timezone
+            is_expired = token.expires_at < datetime.now(timezone.utc)
+        
+        # Try to validate token by fetching channel info
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            
+            if not settings.youtube_client_id or not settings.youtube_client_secret:
+                return {
+                    "connected": True,
+                    "expired": is_expired,
+                    "message": "Token exists but OAuth not fully configured"
+                }
+            
+            creds_data = {
+                "token": token.access_token,
+                "refresh_token": token.refresh_token,
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_id": settings.youtube_client_id,
+                "client_secret": settings.youtube_client_secret,
+                "scopes": YOUTUBE_SCOPES
+            }
+            
+            credentials = Credentials.from_authorized_user_info(creds_data)
+            
+            # Try to refresh if expired
+            if is_expired and token.refresh_token:
+                try:
+                    from google.auth.transport.requests import Request as GoogleRequest
+                    credentials.refresh(GoogleRequest())
+                    
+                    # Update token in database
+                    token.access_token = credentials.token
+                    if credentials.refresh_token:
+                        token.refresh_token = credentials.refresh_token
+                    if credentials.expiry:
+                        token.expires_at = credentials.expiry
+                    db.commit()
+                    is_expired = False
+                except Exception as refresh_error:
+                    logger.error(f"Token refresh failed: {str(refresh_error)}")
+            
+            # Test token by fetching channel info
+            youtube = build('youtube', 'v3', credentials=credentials)
+            channel_response = youtube.channels().list(part='snippet', mine=True).execute()
+            
+            if channel_response.get('items'):
+                channel = channel_response['items'][0]
+                return {
+                    "connected": True,
+                    "expired": is_expired,
+                    "channel_id": channel['id'],
+                    "channel_title": channel['snippet'].get('title', 'Unknown'),
+                    "message": "YouTube account connected and token is valid"
+                }
+            else:
+                return {
+                    "connected": True,
+                    "expired": is_expired,
+                    "message": "Token exists but could not fetch channel info"
+                }
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            return {
+                "connected": True,
+                "expired": True,
+                "message": f"Token exists but validation failed: {str(e)}"
+            }
+    finally:
+        db.close()
+
+
 @app.get("/api/v1/projects/{project_id}")
 async def get_project(project_id: str):
     """Get a specific project with all its shorts from the database."""
