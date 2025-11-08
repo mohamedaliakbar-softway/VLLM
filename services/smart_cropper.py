@@ -41,12 +41,12 @@ class SmartCropper:
                          tracking_focus: str,
                          target_size: Tuple[int, int]) -> VideoFileClip:
         """
-        Apply intelligent cropping based on video category.
+        Apply intelligent cropping based on video category and tracking focus.
 
         Args:
             clip: Video clip to crop
             category: "podcast" or "product_demo"
-            tracking_focus: Description of what to track
+            tracking_focus: Description of what to track (e.g., "speaking person", "product feature", "mouse cursor")
             target_size: Target (width, height) tuple
 
         Returns:
@@ -75,17 +75,11 @@ class SmartCropper:
             crop_width = original_width
             crop_height = int(original_width / target_aspect)
 
-        # Track subject and get crop positions
-        if category == "podcast":
-            crop_positions = self._track_person(clip, crop_width, crop_height,
-                                                duration)
-        elif category == "product_demo":
-            crop_positions = self._track_mouse_or_feature(
-                clip, crop_width, crop_height, duration, tracking_focus)
-        else:
-            # Fallback to center crop
-            crop_positions = self._center_crop_positions(
-                crop_width, crop_height, duration)
+        # Intelligent tracking based on category and tracking_focus
+        # Priority: tracking_focus > category
+        crop_positions = self._smart_track_subject(
+            clip, crop_width, crop_height, duration, category, tracking_focus
+        )
 
         # Apply dynamic cropping
         return self._apply_dynamic_crop(clip, crop_positions, crop_width,
@@ -377,6 +371,80 @@ class SmartCropper:
 
         return path
 
+    def _smart_track_subject(
+            self, clip: VideoFileClip, crop_width: int, crop_height: int,
+            duration: float, category: str, tracking_focus: str) -> List[Tuple[float, int, int]]:
+        """
+        Intelligently track subject based on category and tracking_focus with priority.
+        
+        Priority order:
+        1. tracking_focus keywords (person, face, speaker, product, mouse, cursor, screen)
+        2. category (podcast -> person, product_demo -> product)
+        3. fallback to hybrid detection
+        """
+        logger.info(f"Smart tracking: category='{category}', focus='{tracking_focus}'")
+        
+        # Normalize tracking_focus for comparison
+        focus_lower = tracking_focus.lower() if tracking_focus else ""
+        
+        # Priority 1: Check tracking_focus keywords
+        person_keywords = ["person", "face", "speaker", "speaking", "interview", "host", "guest"]
+        product_keywords = ["product", "mouse", "cursor", "screen", "demo", "feature", "ui", "interface"]
+        
+        focus_on_person = any(keyword in focus_lower for keyword in person_keywords)
+        focus_on_product = any(keyword in focus_lower for keyword in product_keywords)
+        
+        # Determine tracking strategy
+        if focus_on_person:
+            logger.info("Tracking focus: PERSON (from tracking_focus keywords)")
+            return self._track_person(clip, crop_width, crop_height, duration)
+        elif focus_on_product:
+            logger.info("Tracking focus: PRODUCT (from tracking_focus keywords)")
+            return self._track_mouse_or_feature(clip, crop_width, crop_height, duration, tracking_focus)
+        
+        # Priority 2: Use category
+        if category == "podcast":
+            logger.info("Tracking focus: PERSON (from category='podcast')")
+            return self._track_person(clip, crop_width, crop_height, duration)
+        elif category == "product_demo":
+            logger.info("Tracking focus: PRODUCT (from category='product_demo')")
+            return self._track_mouse_or_feature(clip, crop_width, crop_height, duration, tracking_focus)
+        
+        # Priority 3: Hybrid detection - try both and pick the best
+        logger.info("Tracking focus: HYBRID (trying both person and product detection)")
+        return self._hybrid_track(clip, crop_width, crop_height, duration, tracking_focus)
+    
+    def _hybrid_track(
+            self, clip: VideoFileClip, crop_width: int, crop_height: int,
+            duration: float, tracking_focus: str) -> List[Tuple[float, int, int]]:
+        """
+        Hybrid tracking: detect both person and product, choose the best based on confidence.
+        """
+        video_width = clip.w
+        video_height = clip.h
+        
+        # Try person detection first
+        person_positions = self._track_person(clip, crop_width, crop_height, duration)
+        
+        # Check if person was detected (non-center position indicates detection)
+        center_x = (video_width - crop_width) // 2
+        center_y = (video_height - crop_height) // 2
+        
+        person_detected = False
+        if person_positions:
+            # Check if any position is significantly different from center
+            for _, x, y in person_positions:
+                if abs(x - center_x) > 50 or abs(y - center_y) > 50:
+                    person_detected = True
+                    break
+        
+        if person_detected:
+            logger.info("Hybrid: Person detected, using person tracking")
+            return person_positions
+        else:
+            logger.info("Hybrid: No person detected, using product/activity tracking")
+            return self._track_mouse_or_feature(clip, crop_width, crop_height, duration, tracking_focus)
+    
     def _center_crop_positions(
             self, crop_width: int, crop_height: int,
             duration: float) -> List[Tuple[float, int, int]]:

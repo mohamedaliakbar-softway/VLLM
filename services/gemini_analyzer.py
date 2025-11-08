@@ -275,7 +275,7 @@ Return JSON:
       "key_elements": ["element1", "element2"],
       "suggested_cta": "call to action",
       "category": "podcast" or "product_demo",
-      "tracking_focus": "what to track and center"
+      "tracking_focus": "what to track and center - use keywords like 'speaking person', 'face', 'speaker' for people OR 'product', 'screen', 'mouse cursor', 'demo' for products"
     }}
   ]
 }}
@@ -477,7 +477,9 @@ Analyze the transcript and identify up to 3 best highlight segments. For each se
 - Key elements that make it engaging
 - Suggested call-to-action
 - Category: "podcast" (person speaking/interview) or "product_demo" (screen recording/product)
-- Tracking focus: What should be centered in the frame
+- Tracking focus: What should be centered in the frame. Use specific keywords:
+  * For person-focused: "speaking person", "face", "speaker", "interview", "host"
+  * For product-focused: "product", "screen", "mouse cursor", "demo", "feature", "ui"
 
 IMPORTANT: If you cannot find specific highlights, use the beginning of the video (00:00 to 00:30) as a highlight.
 
@@ -524,7 +526,9 @@ Analyze the video and identify up to 3 best highlight segments. For each segment
 - Key visual/audio elements that make it engaging
 - Suggested call-to-action for this segment
 - Video category: "podcast" (person speaking/interview) or "product_demo" (screen recording/product demonstration)
-- Tracking focus: What should be centered in the frame (e.g., "speaking person", "mouse cursor", "product feature being demonstrated")
+- Tracking focus: What should be centered in the frame. Use specific keywords:
+  * For person-focused: "speaking person", "face", "speaker", "interview", "host"
+  * For product-focused: "product", "screen", "mouse cursor", "demo", "feature", "ui"
 
 Format your response as JSON with this structure:
 {
