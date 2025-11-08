@@ -40,6 +40,14 @@ class GeminiAnalyzer:
             List of highlight segments with timestamps and descriptions
         """
         try:
+            # Validate transcript
+            transcript_length = len(transcript.strip()) if transcript else 0
+            if not transcript or transcript_length < 50:
+                logger.warning(f"Transcript too short or empty (length: {transcript_length} chars)")
+                return []
+            
+            logger.info(f"Analyzing transcript (length: {transcript_length} chars, duration: {duration}s)")
+            
             # Create a comprehensive prompt for transcript-based highlight detection
             prompt = self._create_transcript_highlight_prompt(
                 transcript, video_title, video_description, duration
@@ -60,6 +68,8 @@ class GeminiAnalyzer:
             if not response_text:
                 logger.error("Empty response from Gemini API")
                 return []
+            
+            logger.debug(f"Gemini response preview: {response_text[:300]}...")
             
             highlights = self._parse_highlights_response(response_text)
             
@@ -583,8 +593,12 @@ Return ONLY valid JSON, no additional text.
             # Parse JSON
             data = json.loads(cleaned_text)
             
+            raw_highlights = data.get("highlights", [])
+            logger.info(f"Parsed {len(raw_highlights)} highlights from Gemini response")
+            
             highlights = []
-            for highlight in data.get("highlights", []):
+            filtered_count = 0
+            for highlight in raw_highlights:
                 # Validate and convert timestamps
                 start_seconds = self._timestamp_to_seconds(highlight.get("start_time", "00:00"))
                 end_seconds = self._timestamp_to_seconds(highlight.get("end_time", "00:00"))
@@ -592,7 +606,8 @@ Return ONLY valid JSON, no additional text.
                 
                 # Validate duration
                 if duration < settings.short_duration_min or duration > settings.short_duration_max:
-                    logger.warning(f"Skipping highlight with invalid duration: {duration}s")
+                    logger.warning(f"Skipping highlight with invalid duration: {duration}s (start: {highlight.get('start_time')}, end: {highlight.get('end_time')})")
+                    filtered_count += 1
                     continue
                 
                 highlights.append({
@@ -609,6 +624,11 @@ Return ONLY valid JSON, no additional text.
                     "tracking_focus": highlight.get("tracking_focus", ""),
                 })
             
+            if filtered_count > 0:
+                logger.warning(f"Filtered out {filtered_count} highlights due to invalid duration")
+            
+            logger.info(f"After duration filtering: {len(highlights)} highlights remain")
+            
             # Sort by engagement score (highest first) and limit to max_highlights
             highlights.sort(key=lambda x: x["engagement_score"], reverse=True)
             highlights = highlights[:settings.max_highlights]
@@ -617,9 +637,11 @@ Return ONLY valid JSON, no additional text.
         
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
-            logger.error(f"Response text: {response_text[:500]}")
+            logger.error(f"Response text (first 1000 chars): {response_text[:1000]}")
             # Fallback: try to extract timestamps using regex
-            return self._fallback_parse(response_text)
+            fallback_result = self._fallback_parse(response_text)
+            logger.info(f"Fallback parse found {len(fallback_result)} highlights")
+            return fallback_result
     
     def _timestamp_to_seconds(self, timestamp: str) -> int:
         """Convert MM:SS timestamp to seconds."""

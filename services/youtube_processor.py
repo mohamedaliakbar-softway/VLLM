@@ -254,11 +254,16 @@ class YouTubeProcessor:
                     
                     subprocess.run(cmd, capture_output=True, check=True)
                     
+                    end_time = start_time + duration
                     downloaded_segments.append({
                         'segment_id': idx,
                         'file_path': str(output_path),
-                        'start_time': start_time,
-                        'duration': duration
+                        'start_time': start_time,  # Keep for backward compatibility
+                        'start_seconds': start_time,  # Add for consistency
+                        'duration': duration,  # Keep for backward compatibility
+                        'duration_seconds': duration,  # Add for consistency
+                        'end_time': end_time,  # Add for convenience
+                        'end_seconds': end_time,  # Add for consistency
                     })
                     
                     logger.info(f"Downloaded segment {idx}: {output_path}")
