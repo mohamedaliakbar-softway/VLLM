@@ -216,55 +216,43 @@ class YouTubeProcessor:
                         break
                 
                 if tracks:
-                    # Prefer VTT, then JSON3/SRV3, then TTML/SRV1/SRV2, else first available
-                    preferred = None
-                    for ext in ['vtt', 'json3', 'srv3', 'ttml', 'srv1', 'srv2']:
-                        for t in tracks:
-                            if t.get('ext') == ext:
-                                preferred = t
-                                break
-                        if preferred:
-                            break
-                    if not preferred:
-                        preferred = tracks[0]
-                    subtitle_url = preferred.get('url')
-                    import requests
-                    import time
+                    # Let yt-dlp download subtitles directly (bypasses rate limiting)
+                    logger.info(f"Downloading subtitles via yt-dlp for video {video_id}")
                     
-                    # Retry logic with optimized backoff for rate limiting
-                    max_retries = 3  # Reduced from 5 to 3 for faster failure
-                    base_retry_delay = 2  # Start with 2 seconds (was 5s)
+                    import tempfile
+                    import os
+                    import glob
                     
-                    for attempt in range(max_retries):
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        # Download subtitles using yt-dlp
+                        sub_opts = self._get_ydl_opts({
+                            'writesubtitles': True,
+                            'writeautomaticsub': True,
+                            'subtitleslangs': ['en'],
+                            'skip_download': True,
+                            'subtitlesformat': 'vtt',  # Force VTT format
+                            'outtmpl': os.path.join(tmpdir, 'subtitle'),
+                            'quiet': True,
+                            'no_warnings': True,
+                        })
+                        
                         try:
-                            resp = requests.get(subtitle_url, timeout=20)  # Reduced timeout from 30s
-                            resp.raise_for_status()
-                            transcript_text = self._parse_subtitles(resp.text)
-                            break  # Success, exit retry loop
-                        except requests.exceptions.HTTPError as http_err:
-                            if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                                # Rate limited - wait with optimized exponential backoff
-                                wait_time = base_retry_delay * (2 ** attempt)  # 2s, 4s, 8s (was 5s, 10s, 20s, 40s, 80s)
-                                logger.warning(
-                                    f"Rate limited (429) on attempt {attempt + 1}/{max_retries} for video {video_id}, "
-                                    f"waiting {wait_time}s before retry..."
-                                )
-                                time.sleep(wait_time)
+                            with yt_dlp.YoutubeDL(sub_opts) as ydl_sub:
+                                ydl_sub.download([youtube_url])
+                            
+                            # Find the downloaded subtitle file
+                            vtt_files = glob.glob(os.path.join(tmpdir, '*.vtt'))
+                            if vtt_files:
+                                with open(vtt_files[0], 'r', encoding='utf-8') as f:
+                                    subtitle_content = f.read()
+                                transcript_text = self._parse_subtitles(subtitle_content)
+                                logger.info(f"Successfully extracted {len(transcript_text)} chars via yt-dlp")
                             else:
-                                # Re-raise on last attempt or non-429 errors
-                                logger.error(f"Failed to fetch transcript after {attempt + 1} attempts: {http_err}")
-                                raise
+                                logger.warning(f"yt-dlp downloaded subtitles but no VTT file found in {tmpdir}")
+                                transcript_text = ""
                         except Exception as e:
-                            if attempt == max_retries - 1:
-                                # Last attempt, re-raise
-                                logger.error(f"Failed to fetch transcript after {max_retries} attempts: {str(e)}")
-                                raise
-                            # Other errors - retry with optimized backoff
-                            wait_time = base_retry_delay * (2 ** attempt)
-                            logger.warning(
-                                f"Error on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s: {str(e)}"
-                            )
-                            time.sleep(wait_time)
+                            logger.error(f"yt-dlp subtitle download failed: {str(e)}")
+                            transcript_text = ""
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
