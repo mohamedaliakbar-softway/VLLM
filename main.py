@@ -27,8 +27,18 @@ from services.youtube_data_api import YouTubeDataAPI
 from services.caption_generator import CaptionGenerator
 from services.caption_burner import CaptionBurner, CAPTION_STYLES
 # DATABASE DISABLED - Using in-memory storage only
-# from database import get_db, SessionLocal
-# from models import Project, Short, Publication, AccountToken
+# Database operations are commented out, but imports kept for type hints
+try:
+    from database import get_db, SessionLocal
+    from models import Project, Short, Publication, AccountToken
+    DATABASE_AVAILABLE = False  # Set to False to disable all DB operations
+except:
+    # If database modules don't exist, create dummy classes for type hints
+    class Project: pass
+    class Short: pass
+    class Publication: pass
+    class AccountToken: pass
+    DATABASE_AVAILABLE = False
 # from migrate import main as run_migrations
 from utils.logging_decorator import log_async_execution, StepLogger
 import traceback
@@ -1748,7 +1758,7 @@ class GenerateThumbnailPromptRequest(BaseModel):
     platform: Optional[str] = "default"
 
 
-def _fetch_project_and_transcript(db, project_id: Optional[str] = None, short: Optional[Short] = None):
+def _fetch_project_and_transcript(db, project_id: Optional[str] = None, short: Optional[Short] = None):  # DATABASE DISABLED - DB operations commented out
     """Helper to get project, transcript text, and ensure basic availability.
     
     Uses cached transcript if available to reduce YouTube API calls.
