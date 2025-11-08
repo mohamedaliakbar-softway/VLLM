@@ -1725,9 +1725,15 @@ function VideoEditor() {
                   )}
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
                     {/* Centered loader content */}
-                    <div className="relative z-10 w-full max-w-md">
+                    <div className="relative z-10 flex flex-col items-center justify-center">
+                      {/* Centered rotating circle loader */}
+                      <div className="mb-8">
+                        <div className="loader"></div>
+                      </div>
+                      
+                      {/* "Generating" text above circle */}
                       <div className="mb-6 text-center">
-                        <div className="loader-wrapper-processing">
+                        <div className="loader-wrapper-processing" style={{ justifyContent: 'center' }}>
                           <span className="loader-letter">G</span>
                           <span className="loader-letter">e</span>
                           <span className="loader-letter">n</span>
@@ -1738,13 +1744,13 @@ function VideoEditor() {
                           <span className="loader-letter">i</span>
                           <span className="loader-letter">n</span>
                           <span className="loader-letter">g</span>
-                          <div className="loader"></div>
                         </div>
-                        {/* Shimmer text replacing percentage */}
-                        <p className="text-lg font-semibold mt-4 bg-gradient-to-r from-white/20 via-white/80 to-white/20 bg-clip-text text-transparent animate-shimmer-text" style={{ backgroundSize: '200% auto' }}>
-                          {loadingSteps[currentLoadingStep]?.text || "Processing..."}
-                        </p>
                       </div>
+                      
+                      {/* Shimmer text below - left to right */}
+                      <p className="text-lg font-semibold bg-gradient-to-r from-transparent via-white to-transparent bg-clip-text text-transparent animate-shimmer-text" style={{ backgroundSize: '200% auto' }}>
+                        {loadingSteps[currentLoadingStep]?.text || "Processing..."}
+                      </p>
                     </div>
                   </div>
                 </div>
