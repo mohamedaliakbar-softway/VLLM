@@ -1,6 +1,6 @@
 """FastAPI application for Video Shorts Generator SaaS."""
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Query
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
@@ -9,6 +9,7 @@ import uuid
 import time
 from pathlib import Path
 import asyncio
+import secrets
 
 from config import settings
 from services.youtube_processor import YouTubeProcessor
@@ -682,6 +683,238 @@ async def share_short(request: ShareRequest, background_tasks: BackgroundTasks):
             })
 
         return {"short_id": short.id, "publications": created}
+    finally:
+        db.close()
+
+
+# OAuth state storage (in-memory, use Redis in production)
+oauth_states = {}
+
+
+# ============================================================================
+# YouTube OAuth Authentication
+# ============================================================================
+
+@app.get("/api/v1/auth/youtube/connect")
+async def connect_youtube():
+    """
+    Initiate YouTube OAuth flow.
+    Returns authorization URL that user should be redirected to.
+    """
+    try:
+        from google_auth_oauthlib.flow import Flow
+        
+        if not settings.youtube_client_id or not settings.youtube_client_secret:
+            raise HTTPException(
+                status_code=500, 
+                detail="YouTube OAuth not configured. Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET in .env"
+            )
+        
+        # Create OAuth flow
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": settings.youtube_client_id,
+                    "client_secret": settings.youtube_client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [settings.youtube_redirect_uri]
+                }
+            },
+            scopes=[
+                "https://www.googleapis.com/auth/youtube.upload",
+                "https://www.googleapis.com/auth/youtube"
+            ]
+        )
+        
+        # Generate state for CSRF protection
+        state = secrets.token_urlsafe(32)
+        oauth_states[state] = {
+            "timestamp": time.time(),
+            "platform": "youtube"
+        }
+        
+        # Generate authorization URL
+        authorization_url, _ = flow.authorization_url(
+            access_type='offline',  # Required to get refresh token
+            include_granted_scopes='true',
+            prompt='consent',  # Force consent to get refresh token
+            state=state
+        )
+        
+        return {
+            "authorization_url": authorization_url,
+            "state": state
+        }
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth libraries not installed. Install google-auth-oauthlib"
+        )
+    except Exception as e:
+        logger.exception("Error initiating YouTube OAuth")
+        raise HTTPException(status_code=500, detail=f"Failed to initiate OAuth: {str(e)}")
+
+
+@app.get("/api/v1/auth/youtube/callback")
+async def youtube_callback(
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None)
+):
+    """
+    Handle YouTube OAuth callback.
+    Exchanges authorization code for access/refresh tokens and stores them.
+    """
+    try:
+        from google_auth_oauthlib.flow import Flow
+        from googleapiclient.discovery import build
+        
+        # Check for OAuth errors
+        if error:
+            logger.error(f"YouTube OAuth error: {error}")
+            # Redirect to frontend with error
+            return RedirectResponse(
+                url=f"/?oauth_error={error}",
+                status_code=302
+            )
+        
+        if not code:
+            raise HTTPException(status_code=400, detail="Authorization code missing")
+        
+        if not state:
+            raise HTTPException(status_code=400, detail="State parameter missing")
+        
+        # Verify state (CSRF protection)
+        if state not in oauth_states:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        # Remove used state
+        oauth_states.pop(state, None)
+        
+        # Clean up old states (older than 10 minutes) - simple cleanup
+        current_time = time.time()
+        expired_states = [
+            s for s, data in oauth_states.items()
+            if current_time - data.get("timestamp", 0) > 600  # 10 minutes
+        ]
+        for s in expired_states:
+            oauth_states.pop(s, None)
+        
+        if not settings.youtube_client_id or not settings.youtube_client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail="YouTube OAuth not configured"
+            )
+        
+        # Create OAuth flow
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": settings.youtube_client_id,
+                    "client_secret": settings.youtube_client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [settings.youtube_redirect_uri]
+                }
+            },
+            scopes=[
+                "https://www.googleapis.com/auth/youtube.upload",
+                "https://www.googleapis.com/auth/youtube"
+            ]
+        )
+        
+        # Exchange code for tokens
+        flow.fetch_token(code=code)
+        credentials = flow.credentials
+        
+        if not credentials.token:
+            raise HTTPException(status_code=400, detail="Failed to obtain access token")
+        
+        # Get channel info
+        youtube = build('youtube', 'v3', credentials=credentials)
+        channels_response = youtube.channels().list(part='id,snippet', mine=True).execute()
+        
+        channel_id = None
+        channel_title = None
+        if channels_response.get('items'):
+            channel_id = channels_response['items'][0]['id']
+            channel_title = channels_response['items'][0]['snippet'].get('title')
+        
+        # Store tokens in database
+        db = SessionLocal()
+        try:
+            # Check if token already exists for this platform
+            existing_token = db.query(AccountToken).filter(
+                AccountToken.platform == 'youtube'
+            ).first()
+            
+            if existing_token:
+                # Update existing token
+                existing_token.access_token = credentials.token
+                existing_token.refresh_token = credentials.refresh_token
+                existing_token.user_id = channel_id
+                db.commit()
+                token_id = existing_token.id
+                logger.info(f"Updated YouTube token for channel: {channel_title}")
+            else:
+                # Create new token
+                token_id = str(uuid.uuid4())
+                new_token = AccountToken(
+                    id=token_id,
+                    platform='youtube',
+                    access_token=credentials.token,
+                    refresh_token=credentials.refresh_token,
+                    user_id=channel_id
+                )
+                db.add(new_token)
+                db.commit()
+                logger.info(f"Created new YouTube token for channel: {channel_title}")
+            
+            # Redirect to frontend with success
+            return RedirectResponse(
+                url=f"/?oauth_success=youtube&channel={channel_title or 'Unknown'}",
+                status_code=302
+            )
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error storing YouTube token: {e}")
+            return RedirectResponse(
+                url=f"/?oauth_error=Failed to store tokens: {str(e)}",
+                status_code=302
+            )
+        finally:
+            db.close()
+            
+    except ImportError:
+        logger.error("Google OAuth libraries not installed")
+        return RedirectResponse(
+            url="/?oauth_error=OAuth libraries not installed",
+            status_code=302
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error in YouTube OAuth callback")
+        return RedirectResponse(
+            url=f"/?oauth_error={str(e)}",
+            status_code=302
+        )
+
+
+@app.get("/api/v1/auth/youtube/status")
+async def youtube_auth_status():
+    """Check if YouTube account is connected."""
+    db = SessionLocal()
+    try:
+        token = db.query(AccountToken).filter(AccountToken.platform == 'youtube').first()
+        if token:
+            return {
+                "connected": True,
+                "channel_id": token.user_id,
+                "connected_at": token.created_at.isoformat() if token.created_at else None
+            }
+        return {"connected": False}
     finally:
         db.close()
 
