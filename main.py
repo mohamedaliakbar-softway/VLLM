@@ -244,6 +244,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                 # STEP 1: Extract transcript (2-3 seconds) - NO VIDEO DOWNLOAD
                 if attempt == 1:
                     await progress_tracker.update_progress(job_id, "processing", 10, "Extracting video transcript...")
+                    jobs[job_id] = {"status": "processing", "progress": "Extracting video transcript...", "percent": 10}
                 else:
                     await progress_tracker.update_progress(
                         job_id, 
@@ -251,6 +252,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                         10, 
                         f"Retrying transcript extraction (attempt {attempt}/{max_retries})..."
                     )
+                    jobs[job_id] = {"status": "processing", "progress": f"Retrying transcript extraction (attempt {attempt}/{max_retries})...", "percent": 10}
                 
                 with StepLogger("Extract Transcript", {"url": youtube_url, "attempt": attempt}):
                     try:
@@ -287,6 +289,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                 # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
                 if attempt == 1:
                     await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing content with AI...")
+                    jobs[job_id] = {"status": "processing", "progress": "Analyzing content with AI...", "percent": 30}
                 else:
                     await progress_tracker.update_progress(
                         job_id, 
@@ -294,6 +297,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                         30, 
                         f"Retrying AI analysis (attempt {attempt}/{max_retries})..."
                     )
+                    jobs[job_id] = {"status": "processing", "progress": f"Retrying AI analysis (attempt {attempt}/{max_retries})...", "percent": 30}
                 
                 transcript = video_info.get('transcript', '')
                 transcript_length = len(transcript) if transcript else 0
@@ -386,6 +390,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         
         # STEP 3: Download ONLY the specific segments (5-8 seconds) - NOT the entire video
         await progress_tracker.update_progress(job_id, "processing", 50, f"Downloading {len(highlights)} segments...")
+        jobs[job_id] = {"status": "processing", "progress": f"Downloading {len(highlights)} segments...", "percent": 50}
         
         with StepLogger("Download Video Segments", {"count": len(highlights)}):
             try:
@@ -416,6 +421,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         
         # STEP 4: Create shorts with MoviePy and smart cropping in parallel (5-10 seconds) - proper landscape-to-portrait conversion
         await progress_tracker.update_progress(job_id, "processing", 70, f"Creating {len(highlights)} shorts...")
+        jobs[job_id] = {"status": "processing", "progress": f"Creating {len(highlights)} shorts...", "percent": 70}
         
         with StepLogger("Create Shorts with Smart Cropping", {"count": len(segment_files), "platform": platform}):
             try:
@@ -503,7 +509,8 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             "status": "completed",
             "video_title": video_info.get('title', ''),
             "video_duration": video_info.get('duration', 0),
-            "shorts": shorts_info
+            "shorts": shorts_info,
+            "percent": 100
         }
         
         await progress_tracker.update_progress(job_id, "completed", 100, f"Generated {len(shorts_info)} shorts successfully!")

@@ -58,6 +58,7 @@ function VideoEditor() {
     useState("Analyzing video...");
   const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   const MAX_API_RETRIES = 3; // Maximum retries at API level
 
   // Loading animation states
@@ -261,6 +262,8 @@ function VideoEditor() {
           percent,
           error, // Add error to destructuring
         } = response.data;
+
+        console.log('Job polling response:', { status, progress, percent, attempts });
 
         if (progress) {
           setProcessingStatus(progress);
