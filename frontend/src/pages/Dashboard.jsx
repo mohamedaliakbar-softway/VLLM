@@ -23,54 +23,70 @@ function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Mock data for demonstration
-    setTimeout(() => {
-      setVideos([
-        {
-          id: 1,
-          title: 'Marketing Tips for Beginners',
-          thumbnail: 'https://via.placeholder.com/300x200',
-          createdAt: '2024-01-15',
-          shorts: 3,
-          views: 1500,
-          engagement: 87,
-          highlights: [
-            { id: 1, title: 'Key Strategy #1', duration: '45s', views: 500, platform: 'TikTok' },
-            { id: 2, title: 'Pro Marketing Tip', duration: '30s', views: 650, platform: 'Instagram' },
-            { id: 3, title: 'Growth Hacks', duration: '60s', views: 350, platform: 'YouTube Shorts' }
-          ],
-          status: 'completed',
-          processingTime: '1m 23s'
-        },
-        {
-          id: 2,
-          title: 'Product Launch Strategy',
-          thumbnail: 'https://via.placeholder.com/300x200',
-          createdAt: '2024-01-14',
-          shorts: 2,
-          views: 890,
-          engagement: 92,
-          highlights: [
-            { id: 4, title: 'Launch Day Tips', duration: '50s', views: 450, platform: 'Instagram' },
-            { id: 5, title: 'Marketing Funnel', duration: '40s', views: 440, platform: 'TikTok' }
-          ],
-          status: 'completed',
-          processingTime: '1m 10s'
-        },
-      ]);
-      setStats({
-        totalVideos: 2,
-        totalShorts: 5,
-        totalViews: 2390,
-        avgEngagement: 89.5
-      });
-      setLoading(false);
-    }, 500);
+    fetchProjects();
   }, []);
+
+  const fetchProjects = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/v1/projects');
+      const projects = response.data;
+      
+      // Transform projects to match the expected format
+      const transformedVideos = projects.map(project => ({
+        id: project.id,
+        title: project.video_title || 'Untitled Video',
+        thumbnail: `https://img.youtube.com/vi/${project.video_id}/maxresdefault.jpg`,
+        createdAt: new Date(project.created_at).toLocaleDateString(),
+        shorts: project.shorts?.length || 0,
+        views: 0, // Real view data would come from social platforms
+        engagement: 0,
+        highlights: project.shorts?.map((short, idx) => ({
+          id: short.id,
+          title: short.title || `Highlight ${idx + 1}`,
+          duration: `${short.duration || 30}s`,
+          views: 0,
+          platform: short.platform || 'Unknown',
+          filename: short.filename,
+          download_url: short.download_url || `/api/v1/download/${short.filename}`
+        })) || [],
+        status: project.status,
+        processingTime: 'N/A'
+      }));
+      
+      setVideos(transformedVideos);
+      
+      // Calculate stats
+      const totalShorts = transformedVideos.reduce((sum, v) => sum + v.shorts, 0);
+      setStats({
+        totalVideos: transformedVideos.length,
+        totalShorts: totalShorts,
+        totalViews: 0,
+        avgEngagement: 0
+      });
+      
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDelete = async (videoId) => {
     if (globalThis.confirm('Are you sure you want to delete this video and all its shorts?')) {
-      setVideos(videos.filter(v => v.id !== videoId));
+      try {
+        // Delete project from backend
+        await axios.delete(`/api/v1/projects/${videoId}`);
+        
+        // Update local state
+        setVideos(videos.filter(v => v.id !== videoId));
+        
+        // Refresh stats
+        await fetchProjects();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        globalThis.alert('Failed to delete project. Please try again.');
+      }
     }
   };
 
@@ -167,7 +183,6 @@ function Dashboard() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Total Videos</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.totalVideos}</p>
-                  <p className="text-xs text-green-600 font-semibold">+2 this week</p>
                 </div>
               </div>
             </CardContent>
@@ -181,7 +196,6 @@ function Dashboard() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Generated Shorts</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.totalShorts}</p>
-                  <p className="text-xs text-green-600 font-semibold">+5 this week</p>
                 </div>
               </div>
             </CardContent>
@@ -195,7 +209,6 @@ function Dashboard() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Total Views</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.totalViews.toLocaleString()}</p>
-                  <p className="text-xs text-green-600 font-semibold">+12% this week</p>
                 </div>
               </div>
             </CardContent>
@@ -209,7 +222,6 @@ function Dashboard() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Avg Engagement</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.avgEngagement}%</p>
-                  <p className="text-xs text-green-600 font-semibold">+3.2% this week</p>
                 </div>
               </div>
             </CardContent>
@@ -390,7 +402,17 @@ function Dashboard() {
                               <Button size="icon" variant="ghost" className="h-8 w-8">
                                 <Play className="h-4 w-4" />
                               </Button>
-                              <Button size="icon" variant="ghost" className="h-8 w-8">
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-8 w-8"
+                                onClick={() => handleDownload({ 
+                                  id: highlight.id, 
+                                  title: highlight.title,
+                                  download_url: highlight.download_url,
+                                  filename: highlight.filename
+                                })}
+                              >
                                 <Download className="h-4 w-4" />
                               </Button>
                             </div>
