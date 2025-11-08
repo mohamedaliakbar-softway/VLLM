@@ -6,6 +6,7 @@ from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
 import logging
 import uuid
+import time
 from pathlib import Path
 import asyncio
 
@@ -286,8 +287,114 @@ async def generate_shorts(
     Use GET /api/v1/job/{job_id} to check completion status and get results.
     """
     job_id = str(uuid.uuid4())
+    total_start_time = time.time()
     
+<<<<<<< HEAD
     logger.info(f"Creating job {job_id} for URL: {request.youtube_url}")
+=======
+    try:
+        logger.info(f"Starting job {job_id} for URL: {request.youtube_url}")
+        
+        # Step 1: Get video info (validate duration, get title)
+        step1_start = time.time()
+        logger.info("Getting video information...")
+        video_info = youtube_processor.get_video_info(str(request.youtube_url))
+        step1_time = time.time() - step1_start
+        logger.info(f"Step 1 (video info) completed in {step1_time:.2f} seconds")
+        
+        # Step 2: Analyze video for highlights using Gemini (uses YouTube URL directly)
+        # Pass video duration for optimized fast sampling analysis with 5 workers
+        step2_start = time.time()
+        logger.info("Analyzing video for highlights with Gemini AI (5 workers, parallel sampling)...")
+        highlights = gemini_analyzer.analyze_video_for_highlights(
+            str(request.youtube_url),
+            video_info.get('title', ''),
+            video_info.get('duration')
+        )
+        step2_time = time.time() - step2_start
+        logger.info(f"Step 2 (Gemini analysis) completed in {step2_time:.2f} seconds")
+        
+        if not highlights:
+            raise HTTPException(
+                status_code=404,
+                detail="No suitable highlights found in the video"
+            )
+        
+        # Limit highlights based on request
+        max_shorts = min(request.max_shorts or settings.max_highlights, len(highlights))
+        highlights = highlights[:max_shorts]
+        
+        # Step 3: Download video only if we have valid highlights
+        step3_start = time.time()
+        logger.info("Downloading video for clipping...")
+        video_file_info = youtube_processor.download_video(
+            str(request.youtube_url),
+            video_info.get('video_id')
+        )
+        step3_time = time.time() - step3_start
+        logger.info(f"Step 3 (video download) completed in {step3_time:.2f} seconds")
+        
+        # Step 4: Create video shorts
+        step4_start = time.time()
+        platform = request.platform or "default"
+        logger.info(f"Creating {len(highlights)} shorts for platform: {platform}...")
+        created_shorts = video_clipper.create_shorts(
+            video_file_info['file_path'],
+            highlights,
+            video_info['video_id'],
+            platform=platform
+        )
+        step4_time = time.time() - step4_start
+        logger.info(f"Step 4 (create shorts) completed in {step4_time:.2f} seconds")
+        
+        if not created_shorts:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create video shorts"
+            )
+        
+        # Step 5: Prepare response
+        shorts_info = []
+        for short in created_shorts:
+            shorts_info.append(ShortInfo(
+                short_id=short["short_id"],
+                filename=short["filename"],
+                start_time=short["start_time"],
+                end_time=short["end_time"],
+                duration_seconds=short["duration_seconds"],
+                engagement_score=short["engagement_score"],
+                marketing_effectiveness=short["marketing_effectiveness"],
+                suggested_cta=short["suggested_cta"],
+                download_url=f"/api/v1/download/{short['filename']}"
+            ))
+        
+        # Schedule cleanup of source video
+        background_tasks.add_task(
+            youtube_processor.cleanup,
+            video_file_info['file_path']
+        )
+        
+        # Store job info
+        total_time = time.time() - total_start_time
+        jobs[job_id] = {
+            "status": "completed",
+            "video_title": video_info.get('title', ''),
+            "shorts": shorts_info,
+            "total_time_seconds": round(total_time, 2)
+        }
+        
+        logger.info(f"Job {job_id} completed successfully in {total_time:.2f} seconds total")
+        logger.info(f"Breakdown: Info={step1_time:.2f}s, Analysis={step2_time:.2f}s, Download={step3_time:.2f}s, Create={step4_time:.2f}s")
+        
+        return ShortsResponse(
+            job_id=job_id,
+            status="completed",
+            video_title=video_info.get('title', ''),
+            video_duration=video_info.get('duration', 0),
+            shorts=shorts_info,
+            message=f"Successfully generated {len(shorts_info)} marketing shorts in {total_time:.2f} seconds"
+        )
+>>>>>>> fa35f32879af9f0dc0158ea17eb4fdbf99319270
     
     progress_tracker.create_job(job_id)
     jobs[job_id] = {"status": "queued", "progress": 0}

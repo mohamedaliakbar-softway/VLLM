@@ -15,7 +15,11 @@ def generate_shorts_example(youtube_url: str, max_shorts: int = 3):
         max_shorts: Maximum number of shorts to generate (default: 3)
     """
     print(f"🚀 Generating shorts from: {youtube_url}")
-    print(f"📊 Requesting up to {max_shorts} highlights...\n")
+    print(f"📊 Requesting up to {max_shorts} highlights...")
+    print(f"⚡ Using optimized analysis with 5 workers in parallel\n")
+    
+    # Start timing
+    start_time = time.time()
     
     # Make API request
     response = requests.post(
@@ -27,13 +31,20 @@ def generate_shorts_example(youtube_url: str, max_shorts: int = 3):
         timeout=600  # 10 minutes timeout for long videos
     )
     
+    total_time = time.time() - start_time
+    
     if response.status_code == 200:
         result = response.json()
         
         print("✅ Success! Generated shorts:\n")
         print(f"📹 Video: {result['video_title']}")
         print(f"⏱️  Duration: {result['video_duration']} seconds")
-        print(f"🎬 Generated {len(result['shorts'])} shorts\n")
+        print(f"🎬 Generated {len(result['shorts'])} shorts")
+        print(f"⏱️  Total Response Time: {total_time:.2f} seconds")
+        if 'message' in result and 'seconds' in result['message']:
+            print(f"📊 {result['message']}\n")
+        else:
+            print()
         print("=" * 60)
         
         for short in result['shorts']:
