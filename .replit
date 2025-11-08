@@ -17,19 +17,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "api"
+args = "backend"
 
 [[workflows.workflow]]
-name = "api"
+name = "backend"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "./start_all.sh"
-waitForPort = 5000
+args = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+waitForPort = 8000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000
@@ -38,6 +38,10 @@ externalPort = 80
 [[ports]]
 localPort = 41841
 externalPort = 3000
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
 
 [deployment]
 deploymentTarget = "vm"
