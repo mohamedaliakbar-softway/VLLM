@@ -1,5 +1,5 @@
 """FastAPI application for Video Shorts Generator SaaS."""
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -2114,6 +2114,318 @@ async def burn_captions_task(
         )
 
 
+# ==================== BRAND LOGO ENDPOINTS ====================
+
+class LogoUploadResponse(BaseModel):
+    """Response for logo upload."""
+    success: bool
+    message: str
+    logo_path: Optional[str] = None
+    logo_info: Optional[dict] = None
+
+
+class ApplyLogoRequest(BaseModel):
+    """Request for applying logo to clip."""
+    position: str = "bottom-right"
+    size_percent: float = 10.0
+    opacity: float = 0.8
+    padding: int = 20
+
+
+@app.post("/api/v1/upload-logo")
+async def upload_logo(file: UploadFile = File(...)) -> LogoUploadResponse:
+    """
+    Upload a brand logo image for video overlay.
+    
+    Args:
+        file: Logo image file (PNG, JPG, GIF, BMP)
+        
+    Returns:
+        LogoUploadResponse with upload status and logo info
+    """
+    try:
+        from services.logo_overlay import LogoOverlay
+        
+        # Validate file type
+        allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/bmp"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed: PNG, JPG, GIF, BMP. Got: {file.content_type}"
+            )
+        
+        # Create logos directory
+        logos_dir = Path("uploads/logos")
+        logos_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_ext = Path(file.filename).suffix
+        logo_filename = f"logo_{uuid.uuid4()}{file_ext}"
+        logo_path = logos_dir / logo_filename
+        
+        # Save uploaded file
+        with open(logo_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        logger.info(f"Logo uploaded: {logo_path}")
+        
+        # Validate logo image
+        overlay = LogoOverlay()
+        validation = overlay.validate_logo_image(str(logo_path))
+        
+        if not validation['valid']:
+            # Remove invalid file
+            logo_path.unlink()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid logo image: {validation['error']}"
+            )
+        
+        return LogoUploadResponse(
+            success=True,
+            message="Logo uploaded successfully",
+            logo_path=str(logo_path),
+            logo_info=validation
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
+
+
+@app.get("/api/v1/logos")
+async def list_logos():
+    """
+    List all uploaded brand logos.
+    
+    Returns:
+        List of available logos with their info
+    """
+    try:
+        from services.logo_overlay import LogoOverlay
+        
+        logos_dir = Path("uploads/logos")
+        if not logos_dir.exists():
+            return {"logos": []}
+        
+        overlay = LogoOverlay()
+        logos = []
+        
+        for logo_file in logos_dir.glob("logo_*"):
+            validation = overlay.validate_logo_image(str(logo_file))
+            if validation['valid']:
+                logos.append({
+                    "path": str(logo_file),
+                    "filename": logo_file.name,
+                    "info": validation
+                })
+        
+        return {"logos": logos}
+        
+    except Exception as e:
+        logger.error(f"Error listing logos: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/v1/logos/{logo_filename}")
+async def delete_logo(logo_filename: str):
+    """
+    Delete a brand logo.
+    
+    Args:
+        logo_filename: Name of the logo file to delete
+        
+    Returns:
+        Success message
+    """
+    try:
+        logos_dir = Path("uploads/logos")
+        logo_path = logos_dir / logo_filename
+        
+        if not logo_path.exists():
+            raise HTTPException(status_code=404, detail="Logo not found")
+        
+        # Security check: ensure file is in logos directory
+        if not str(logo_path.resolve()).startswith(str(logos_dir.resolve())):
+            raise HTTPException(status_code=403, detail="Invalid logo path")
+        
+        logo_path.unlink()
+        logger.info(f"Logo deleted: {logo_filename}")
+        
+        return {"success": True, "message": "Logo deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/clips/{clip_id}/apply-logo")
+async def apply_logo_to_clip(
+    clip_id: int,
+    logo_path: str,
+    request: ApplyLogoRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Apply brand logo overlay to a video clip.
+    
+    Args:
+        clip_id: ID of the video clip
+        logo_path: Path to the logo image
+        request: Logo settings (position, size, opacity, padding)
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        Job ID for tracking the logo overlay process
+    """
+    try:
+        from services.logo_overlay import LogoOverlay
+        
+        # Validate logo exists
+        if not Path(logo_path).exists():
+            raise HTTPException(status_code=404, detail="Logo file not found")
+        
+        # Validate logo image
+        overlay = LogoOverlay()
+        validation = overlay.validate_logo_image(logo_path)
+        if not validation['valid']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid logo: {validation['error']}"
+            )
+        
+        # Get clip from database
+        db = SessionLocal()
+        try:
+            short = db.query(Short).filter(Short.id == clip_id).first()
+            
+            if not short:
+                raise HTTPException(status_code=404, detail="Clip not found")
+            
+            video_path = short.file_path
+            if not video_path or not Path(video_path).exists():
+                raise HTTPException(status_code=404, detail="Video file not found")
+            
+            # Create background job
+            job_id = str(uuid.uuid4())
+            
+            background_tasks.add_task(
+                apply_logo_task,
+                job_id=job_id,
+                clip_id=clip_id,
+                video_path=video_path,
+                logo_path=logo_path,
+                position=request.position,
+                size_percent=request.size_percent,
+                opacity=request.opacity,
+                padding=request.padding
+            )
+            
+            return {
+                "job_id": job_id,
+                "status": "processing",
+                "message": "Applying logo overlay..."
+            }
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def apply_logo_task(
+    job_id: str,
+    clip_id: int,
+    video_path: str,
+    logo_path: str,
+    position: str,
+    size_percent: float,
+    opacity: float,
+    padding: int
+):
+    """Background task to apply logo overlay to video"""
+    try:
+        from services.video_clipper import VideoClipper
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "processing",
+            20,
+            "Preparing logo overlay..."
+        )
+        
+        # Initialize video clipper
+        clipper = VideoClipper()
+        
+        # Generate output path
+        output_path = str(Path(video_path).with_stem(f"{Path(video_path).stem}_with_logo"))
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "processing",
+            40,
+            "Applying logo to video..."
+        )
+        
+        # Apply logo overlay
+        result_path = clipper.add_logo(
+            input_path=video_path,
+            logo_path=logo_path,
+            output_path=output_path,
+            position=position,
+            size_percent=size_percent,
+            opacity=opacity,
+            padding=padding
+        )
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "processing",
+            90,
+            "Updating database..."
+        )
+        
+        # Update database with new file path
+        db = SessionLocal()
+        try:
+            short = db.query(Short).filter(Short.id == clip_id).first()
+            if short:
+                short.file_path = result_path
+                db.commit()
+        finally:
+            db.close()
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "completed",
+            100,
+            "Logo applied successfully",
+            result={
+                "new_file_path": result_path,
+                "position": position,
+                "size_percent": size_percent,
+                "opacity": opacity
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Logo overlay task failed: {str(e)}")
+        await progress_tracker.update_progress(
+            job_id,
+            "failed",
+            0,
+            f"Logo overlay failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
@@ -2122,3 +2434,4 @@ if __name__ == "__main__":
         port=settings.port,
         reload=settings.debug
     )
+
