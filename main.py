@@ -144,12 +144,14 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             return
         
         shorts_info = []
-        for short in created_shorts:
+        for idx, short in enumerate(created_shorts):
             shorts_info.append({
                 "short_id": short["short_id"],
+                "title": short.get("title", f"Highlight {idx + 1}"),
                 "filename": short["filename"],
                 "start_time": short["start_time"],
                 "end_time": short["end_time"],
+                "duration": short["duration_seconds"],
                 "duration_seconds": short["duration_seconds"],
                 "engagement_score": short["engagement_score"],
                 "marketing_effectiveness": short["marketing_effectiveness"],

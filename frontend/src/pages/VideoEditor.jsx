@@ -114,9 +114,9 @@ function VideoEditor() {
             title: short.title || `Highlight ${idx + 1}`,
             startTime: formatTime(short.start_time),
             endTime: formatTime(short.end_time),
-            duration: short.duration || 30,
+            duration: short.duration || short.duration_seconds || 30,
             filename: short.filename,
-            url: `/api/v1/download/${short.filename}`
+            url: short.download_url || `/api/v1/download/${short.filename}`
           }));
           
           setClips(newClips);
