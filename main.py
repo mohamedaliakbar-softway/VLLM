@@ -15,12 +15,13 @@ from services.youtube_processor import YouTubeProcessor
 from services.gemini_analyzer import GeminiAnalyzer
 from services.ai_agent import VideoEditingAgent
 from services.video_clipper import VideoClipper
+from services.social_publisher import SocialPublisher, build_post_text
 from services.progress_tracker import progress_tracker
 from services.youtube_data_api import YouTubeDataAPI
 from services.caption_generator import CaptionGenerator
 from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
-from models import Project, Short
+from models import Project, Short, Publication, AccountToken
 
 # Configure logging
 logging.basicConfig(
@@ -51,6 +52,7 @@ gemini_analyzer = GeminiAnalyzer()
 video_clipper = VideoClipper()
 ai_agent = VideoEditingAgent()
 youtube_data_api = YouTubeDataAPI()
+social_publisher = SocialPublisher()
 
 
 # Request/Response models
@@ -441,6 +443,183 @@ async def list_projects(skip: int = 0, limit: int = 20):
             })
         
         return {"projects": result, "total": len(result)}
+    finally:
+        db.close()
+
+
+# ============================================================================
+# Share: Multi-platform Publishing
+# ============================================================================
+
+class ShareRequest(BaseModel):
+    short_id: str
+    platforms: List[str]  # e.g., ["linkedin", "instagram", "x"]
+    text: Optional[str] = None  # optional override
+
+
+async def _publish_publication_async(publication_id: str):
+    """Background task to publish a single publication."""
+    db = SessionLocal()
+    try:
+        pub = db.query(Publication).filter(Publication.id == publication_id).first()
+        if not pub:
+            return
+        short = db.query(Short).filter(Short.id == pub.short_id).first()
+        if not short:
+            pub.status = "failed"
+            pub.error_message = "Short not found"
+            db.commit()
+            return
+
+        file_path = str(Path(settings.output_dir) / short.filename)
+        # Validate file existence
+        if not Path(file_path).exists():
+            pub.status = "failed"
+            pub.error_message = f"File not found: {file_path}"
+            db.commit()
+            return
+        
+        # Validate size against soft limit
+        try:
+            file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+            if file_size_mb > settings.max_upload_mb:
+                pub.status = "failed"
+                pub.error_message = f"File too large: {file_size_mb:.1f}MB > {settings.max_upload_mb}MB"
+                db.commit()
+                return
+        except Exception:
+            pass
+
+        # Ensure account token exists for platform
+        token = db.query(AccountToken).filter(AccountToken.platform == pub.platform).first()
+        if not token:
+            pub.status = "failed"
+            pub.error_message = f"No connected account/token for platform: {pub.platform}"
+            db.commit()
+            return
+
+        # Build text: prefer provided platform_description/title/cta + hashtags
+        base_text = short.platform_description or short.title or ""
+        if short.cta:
+            base_text = f"{base_text}\n\n{short.cta}".strip()
+        text_to_post = build_post_text(pub.platform, base_text, short.hashtags)
+
+        pub.status = "processing"
+        db.commit()
+
+        # Prepare metadata and persist payload snapshot
+        payload = {
+            "platform": pub.platform,
+            "file_path": file_path,
+            "text": text_to_post,
+            "metadata": {"title": short.platform_title or short.title or ""},
+            "token_id": token.id
+        }
+        try:
+            import json as _json
+            pub.payload = _json.dumps(payload)
+            db.commit()
+        except Exception:
+            pass
+
+        # Retry with exponential backoff
+        attempts = 0
+        result = None
+        last_error = None
+        while attempts < (settings.share_max_retries or 1):
+            attempts += 1
+            result = social_publisher.publish(
+                platform=pub.platform,
+                file_path=file_path,
+                text=text_to_post,
+                metadata={**payload["metadata"], "token_id": token.id}
+            )
+            if result and result.success:
+                break
+            last_error = result.error if result else "unknown error"
+            # Backoff: 0.5, 1.0, 2.0 ... seconds
+            await asyncio.sleep(0.5 * (2 ** (attempts - 1)))
+
+        if result and result.success:
+            pub.status = "published"
+            pub.external_post_id = result.external_post_id
+            pub.external_url = result.external_url
+            pub.error_message = None
+        else:
+            pub.status = "failed"
+            pub.error_message = last_error or "publish failed"
+        db.commit()
+    except Exception as e:
+        try:
+            pub = db.query(Publication).filter(Publication.id == publication_id).first()
+            if pub:
+                pub.status = "failed"
+                pub.error_message = str(e)
+                db.commit()
+        except:
+            pass
+    finally:
+        db.close()
+
+
+@app.post("/api/v1/share")
+async def share_short(request: ShareRequest, background_tasks: BackgroundTasks):
+    """Create per-platform publication jobs for a short and run them asynchronously."""
+    db = SessionLocal()
+    try:
+        short = db.query(Short).filter(Short.id == request.short_id).first()
+        if not short:
+            raise HTTPException(status_code=404, detail="Short not found")
+
+        # Validate platforms against allowed list
+        allowed = {p.strip().lower() for p in (settings.allowed_platforms or "").split(',') if p.strip()}
+        invalid = [p for p in request.platforms if p.lower() not in allowed]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Unsupported platforms: {', '.join(invalid)}")
+
+        created = []
+        for platform in request.platforms:
+            pub = Publication(
+                id=str(uuid.uuid4()),
+                short_id=short.id,
+                platform=platform.lower(),
+                status="queued",
+                payload=None
+            )
+            db.add(pub)
+            db.commit()
+
+            background_tasks.add_task(_publish_publication_async, pub.id)
+            created.append({
+                "publication_id": pub.id,
+                "platform": pub.platform,
+                "status": pub.status
+            })
+
+        return {"short_id": short.id, "publications": created}
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/share/{publication_id}")
+async def get_publication_status(publication_id: str):
+    """Get status of a single publication job."""
+    db = SessionLocal()
+    try:
+        pub = db.query(Publication).filter(Publication.id == publication_id).first()
+        if not pub:
+            raise HTTPException(status_code=404, detail="Publication not found")
+        return {
+            "publication_id": pub.id,
+            "short_id": pub.short_id,
+            "platform": pub.platform,
+            "status": pub.status,
+            "external_post_id": pub.external_post_id,
+            "external_url": pub.external_url,
+            "error_message": pub.error_message,
+            "created_at": pub.created_at.isoformat() if pub.created_at else None,
+            "updated_at": pub.updated_at.isoformat() if pub.updated_at else None,
+        }
     finally:
         db.close()
 

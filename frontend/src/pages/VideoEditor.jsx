@@ -1106,13 +1106,23 @@ function VideoEditor() {
                   />
                 )}
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
-                  <div className="relative w-32 h-32 mb-4">
-                    <div className="absolute inset-0 rounded-full border-4 border-[#1E201E] border-t-transparent animate-spin"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-2xl font-bold text-white">{Math.round(processingProgress)}%</span>
-                    </div>
+                  <div className="loader-wrapper-processing">
+                    <span className="loader-letter">G</span>
+                    <span className="loader-letter">e</span>
+                    <span className="loader-letter">n</span>
+                    <span className="loader-letter">e</span>
+                    <span className="loader-letter">r</span>
+                    <span className="loader-letter">a</span>
+                    <span className="loader-letter">t</span>
+                    <span className="loader-letter">i</span>
+                    <span className="loader-letter">n</span>
+                    <span className="loader-letter">g</span>
+                    <div className="loader"></div>
                   </div>
-                  <p className="text-lg font-medium text-white text-center">{processingStatus}</p>
+                  <div className="relative z-10 text-center mt-6">
+                    <p className="text-lg font-medium text-white">{processingStatus}</p>
+                    <p className="text-sm text-white/80 mt-2">{Math.round(processingProgress)}%</p>
+                  </div>
                 </div>
               </div>
             ) : (

@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     temp_dir: str = "./temp"
     output_dir: str = "./output"
     
+    # Sharing / Publishing
+    allowed_platforms: str = "linkedin,instagram,x"  # comma-separated
+    max_upload_mb: int = 250  # soft limit; actual APIs may vary
+    share_max_retries: int = 3
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
