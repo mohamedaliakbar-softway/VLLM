@@ -9,6 +9,15 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { extractVideoId, getThumbnailUrl } from '../utils/youtube';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Slider } from '@/components/ui/slider';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 function VideoEditor() {
   const navigate = useNavigate();
@@ -669,271 +678,279 @@ function VideoEditor() {
   };
 
   return (
-    <div className="editor-new-container">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Top Navigation */}
-      <div className="editor-nav">
-        <div className="nav-left-group">
-          <button className="back-btn" onClick={() => navigate('/')}>
-            <ArrowLeft size={20} />
+      <div className="border-b border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4" />
             Back
-          </button>
-          <h2 className="editor-title">Video Editor</h2>
+          </Button>
+          <h2 className="text-lg font-semibold text-gray-900">Video Editor</h2>
         </div>
-        <div className="nav-center-group">
-          <button 
-            className={`panel-toggle-btn ${!isLeftPanelVisible ? 'collapsed' : ''}`}
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="icon"
             onClick={() => setIsLeftPanelVisible(!isLeftPanelVisible)}
             aria-label={isLeftPanelVisible ? 'Hide Copilot panel' : 'Show Copilot panel'}
-            title={isLeftPanelVisible ? 'Hide Copilot' : 'Show Copilot'}
+            className={!isLeftPanelVisible ? 'bg-gray-100' : ''}
           >
-            <PanelLeft size={18} />
-          </button>
-          <button 
-            className={`panel-toggle-btn ${!isRightPanelVisible ? 'collapsed' : ''}`}
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
             onClick={() => setIsRightPanelVisible(!isRightPanelVisible)}
             aria-label={isRightPanelVisible ? 'Hide Properties panel' : 'Show Properties panel'}
-            title={isRightPanelVisible ? 'Hide Properties' : 'Show Properties'}
+            className={!isRightPanelVisible ? 'bg-gray-100' : ''}
           >
-            <PanelRight size={18} />
-          </button>
+            <PanelRight className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="editor-actions">
-          <button className="action-btn" onClick={handleExport} disabled={isProcessing || clips.length === 0}>
-            <Download size={20} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={isProcessing || clips.length === 0}>
+            <Download className="h-4 w-4" />
             Export
-          </button>
-          <button className="action-btn primary" onClick={handlePublish} disabled={isProcessing || clips.length === 0}>
-            <Share2 size={20} />
+          </Button>
+          <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={handlePublish} disabled={isProcessing || clips.length === 0}>
+            <Share2 className="h-4 w-4" />
             Publish
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className={`editor-workspace-new ${!isLeftPanelVisible ? 'left-collapsed' : ''} ${!isRightPanelVisible ? 'right-collapsed' : ''}`}>
-        {/* Left Panel - Assistant Chat - Resizable */}
-        <aside 
-          className={`assistant-panel ${!isLeftPanelVisible ? 'collapsed' : ''}`}
-          style={{ 
-            width: isLeftPanelVisible ? `${chatPanelWidth}px` : '0px',
-            minWidth: isLeftPanelVisible ? '280px' : '0px',
-            maxWidth: isLeftPanelVisible ? '600px' : '0px',
-            overflow: isLeftPanelVisible ? 'visible' : 'hidden'
-          }}
-        >
-          {/* Resize Handle */}
-          <button 
-            className="resize-handle" 
-            onMouseDown={handleResizeStart}
-            aria-label="Resize chat panel"
-            type="button"
-          >
-            <GripVertical size={16} />
-          </button>
-
-          <div className="copilot-chat-header">
-            <div className="chat-header-content">
-              <Sparkles size={18} className="sparkle-icon-chat" />
-              <div className="chat-header-text">
-                <h3>Copilot</h3>
-                <span className="chat-status">{isAiThinking ? 'Thinking...' : 'Ready to assist'}</span>
-              </div>
-            </div>
-            <button 
-              className="expand-chat-btn" 
-              onClick={toggleChatExpand}
-              aria-label={isChatExpanded ? 'Minimize chat' : 'Maximize chat'}
+      <div 
+        className="flex-1 grid overflow-hidden transition-all duration-300"
+        style={{
+          gridTemplateColumns: isLeftPanelVisible && isRightPanelVisible 
+            ? `${chatPanelWidth}px 1fr 350px` 
+            : isLeftPanelVisible 
+            ? `${chatPanelWidth}px 1fr 0px`
+            : isRightPanelVisible 
+            ? `0px 1fr 350px`
+            : '1fr'
+        }}
+      >
+        {/* Left Panel - Assistant Chat */}
+        {isLeftPanelVisible && (
+          <aside className="border-r border-gray-200 bg-white flex flex-col overflow-hidden relative" style={{ width: `${chatPanelWidth}px`, minWidth: '280px', maxWidth: '600px' }}>
+            {/* Resize Handle */}
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-gray-100 z-10 flex items-center justify-center"
+              onMouseDown={handleResizeStart}
+              aria-label="Resize chat panel"
             >
-              {isChatExpanded ? <Minimize size={16} /> : <Maximize size={16} />}
-            </button>
-          </div>
-
-          <div className="suggestions-section">
-            <p className="suggestions-label">Suggestions</p>
-            <div className="suggestions-grid">
-              <button className="suggestion-chip" onClick={() => handleQuickAction('Use example video')}>
-                <Video size={14} />
-                <span>Use example video</span>
-              </button>
-              <button className="suggestion-chip" onClick={() => handleQuickAction('Add live captions')}>
-                <Type size={14} />
-                <span>Add live captions</span>
-              </button>
-              <button className="suggestion-chip" onClick={() => handleQuickAction('Dub in Kannada')}>
-                <Volume2 size={14} />
-                <span>Dub in Kannada</span>
-              </button>
-              <button className="suggestion-chip" onClick={() => handleQuickAction('Summarize scenes')}>
-                <Wand2 size={14} />
-                <span>Summarize scenes</span>
-              </button>
-              <button className="suggestion-chip" onClick={() => handleQuickAction('Change video URL')}>
-                <ArrowLeft size={14} />
-                <span>Change video URL</span>
-              </button>
+              <GripVertical className="h-4 w-4 text-gray-400 pointer-events-none" />
             </div>
-          </div>
 
-          <div className="copilot-chat-messages">
-            {chatHistory.map((msg, idx) => (
-              <div key={`msg-${idx}-${msg.content.substring(0, 20)}`} className={`copilot-message ${msg.role}`}>
-                <div className="message-avatar">
-                  {msg.role === 'assistant' ? (
-                    <Sparkles size={16} />
-                  ) : (
-                    <span className="user-avatar">You</span>
-                  )}
-                </div>
-                <div className="message-content-wrapper">
-                  <div className="message-header">
-                    <span className="message-sender">
-                      {msg.role === 'assistant' ? 'Copilot' : 'You'}
-                    </span>
-                    <span className="message-time">
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="message-text">
-                    {msg.content}
-                  </div>
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between bg-gray-50">
+              <div className="flex items-center gap-3">
+                <Sparkles className="h-4 w-4 text-[#1E201E]" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Copilot</h3>
+                  <span className="text-xs text-gray-500">{isAiThinking ? 'Thinking...' : 'Ready to assist'}</span>
                 </div>
               </div>
-            ))}
-          </div>
-
-          <form className="copilot-chat-input-form" onSubmit={handleSendMessage}>
-            <div className="input-wrapper-copilot">
-              <input
-                type="text"
-                placeholder={isAiThinking ? "AI is processing..." : "Ask Copilot to edit your video..."}
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                className="copilot-input"
-                disabled={isAiThinking}
-              />
-              <button 
-                type="submit" 
-                className="copilot-send-btn" 
-                disabled={isAiThinking || !chatMessage.trim()}
-                aria-label="Send message"
-              >
-                {isAiThinking ? <Loader2 size={18} className="spinner-icon" /> : <Send size={18} />}
-              </button>
+              <Button variant="ghost" size="icon" onClick={toggleChatExpand}>
+                {isChatExpanded ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+              </Button>
             </div>
-            <p className="input-hint">💡 Try: "Trim clip to 20s" or "Change title to Marketing Tips"</p>
-          </form>
-        </aside>
+
+            <div className="border-b border-gray-200 p-4 bg-white">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Suggestions</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="cursor-pointer hover:bg-gray-100" onClick={() => handleQuickAction('Use example video')}>
+                  <Video className="h-3 w-3 mr-1" />
+                  Use example video
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-gray-100" onClick={() => handleQuickAction('Add live captions')}>
+                  <Type className="h-3 w-3 mr-1" />
+                  Add live captions
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-gray-100" onClick={() => handleQuickAction('Dub in Kannada')}>
+                  <Volume2 className="h-3 w-3 mr-1" />
+                  Dub in Kannada
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-gray-100" onClick={() => handleQuickAction('Summarize scenes')}>
+                  <Wand2 className="h-3 w-3 mr-1" />
+                  Summarize scenes
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-gray-100" onClick={() => handleQuickAction('Change video URL')}>
+                  <ArrowLeft className="h-3 w-3 mr-1" />
+                  Change video URL
+                </Badge>
+              </div>
+            </div>
+
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {chatHistory.map((msg, idx) => (
+                  <div key={`msg-${idx}-${msg.content.substring(0, 20)}`} className="flex gap-3">
+                    <div className={cn(
+                      "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0",
+                      msg.role === 'assistant' ? "bg-[#1E201E] text-white" : "bg-gray-200 text-gray-700"
+                    )}>
+                      {msg.role === 'assistant' ? (
+                        <Sparkles className="h-4 w-4" />
+                      ) : (
+                        <span className="text-xs font-semibold">You</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-900">
+                          {msg.role === 'assistant' ? 'Copilot' : 'You'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-700 leading-relaxed">
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            <form className="border-t border-gray-200 p-4 bg-gray-50" onSubmit={handleSendMessage}>
+              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 focus-within:ring-2 focus-within:ring-[#1E201E] focus-within:border-[#1E201E]">
+                <Input
+                  type="text"
+                  placeholder={isAiThinking ? "AI is processing..." : "Ask Copilot to edit your video..."}
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  disabled={isAiThinking}
+                  className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+                <Button 
+                  type="submit" 
+                  size="icon"
+                  variant="ghost"
+                  disabled={isAiThinking || !chatMessage.trim()}
+                  aria-label="Send message"
+                >
+                  {isAiThinking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2 text-center">💡 Try: "Trim clip to 20s" or "Change title to Marketing Tips"</p>
+            </form>
+          </aside>
+        )}
 
         {/* Center Panel - Video Preview */}
-        <main className="preview-panel">
-          <div className="video-container">
+        <main className="flex flex-col bg-white p-6 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center bg-black rounded-3xl overflow-hidden shadow-2xl relative">
             {isProcessing ? (
               // Show blurred thumbnail while processing
-              <div className="preview-loading">
+              <div className="relative w-full h-full rounded-3xl overflow-hidden">
                 {thumbnailUrl && (
                   <img 
                     src={thumbnailUrl} 
                     alt="Video thumbnail" 
-                    className="blurred-thumbnail"
+                    className="w-full h-full object-cover blur-2xl brightness-50 opacity-50 rounded-3xl"
                   />
                 )}
-                <div className="loading-overlay">
-                  <div className="loader-wrapper">
-                    <div className="loader"></div>
-                    <span className="loader-percentage">{Math.round(processingProgress)}%</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
+                  <div className="relative w-32 h-32 mb-4">
+                    <div className="absolute inset-0 rounded-full border-4 border-[#1E201E] border-t-transparent animate-spin"></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-white">{Math.round(processingProgress)}%</span>
+                    </div>
                   </div>
-                  <p className="loading-text">{processingStatus}</p>
+                  <p className="text-lg font-medium text-white text-center">{processingStatus}</p>
                 </div>
               </div>
             ) : (
               <>
                 {clips.length > 0 && selectedClip?.url ? (
                   // Show video player when ready with 9:16 aspect ratio
-                  <div className="video-wrapper">
+                  <div className="relative w-auto h-full max-w-full aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl">
                     <video
                       ref={videoRef}
-                      className="video-player-new"
+                      className="w-full h-full object-cover rounded-3xl"
                       onTimeUpdate={handleTimeUpdate}
                       onLoadedMetadata={handleLoadedMetadata}
-                                        onError={(e) => {
-                    console.error('Video load error:', e);
-                    console.error('Video URL:', selectedClip.url);
-                    console.error('Video element error details:', videoRef.current?.error);
-                    setError(`Failed to load video: ${videoRef.current?.error?.message || 'Unknown error'}`);
-                  }}
-                  onCanPlay={() => {
-                    console.log('Video can play, URL:', selectedClip.url);
-                    setError(''); // Clear any previous errors
-                  }}
+                      onError={(e) => {
+                        console.error('Video load error:', e);
+                        console.error('Video URL:', selectedClip.url);
+                        console.error('Video element error details:', videoRef.current?.error);
+                        setError(`Failed to load video: ${videoRef.current?.error?.message || 'Unknown error'}`);
+                      }}
+                      onCanPlay={() => {
+                        console.log('Video can play, URL:', selectedClip.url);
+                        setError('');
+                      }}
                       onEnded={() => setIsPlaying(false)}
                       src={selectedClip.url}
                       key={selectedClip.url}
-                                    controls={false}
-                  preload="metadata"
+                      controls={false}
+                      preload="metadata"
                     >
                       <track kind="captions" srcLang="en" label="English" />
                     </video>
                     
-                    <div className="clip-label">Clip #{selectedClipIndex + 1}</div>
+                    <div className="absolute top-5 left-5 px-3 py-1.5 bg-black/60 backdrop-blur-md text-white rounded-xl text-sm font-semibold border border-white/20">
+                      Clip #{selectedClipIndex + 1}
+                    </div>
                     
                     {/* Video Controls */}
-                    <div className="video-controls">
+                    <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent backdrop-blur-sm opacity-0 hover:opacity-100 transition-opacity rounded-b-3xl">
                       <div 
-                        className="video-progress" 
+                        className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer mb-3 hover:h-2 transition-all"
                         onClick={handleProgressClick}
                         role="progressbar"
                         aria-label="Video progress"
-                        aria-valuenow={currentTime}
-                        aria-valuemin={0}
-                        aria-valuemax={duration}
                       >
                         <div 
-                          className="video-progress-filled" 
+                          className="h-full bg-gradient-to-r from-[#1E201E] via-purple-600 to-pink-500 rounded-full transition-all shadow-lg shadow-[#1E201E]/50"
                           style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
                         />
                       </div>
                       
-                      <div className="video-control-buttons">
-                        <button 
-                          className="control-btn primary" 
+                      <div className="flex items-center gap-3 text-white">
+                        <Button 
+                          size="icon"
+                          className="h-11 w-11 bg-[#1E201E] hover:bg-[#1E201E]/90 text-white rounded-full"
                           onClick={handlePlayPause}
                           aria-label={isPlaying ? "Pause" : "Play"}
                         >
-                          {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                        </button>
+                          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                        </Button>
                         
-                        <button 
-                          className="control-btn" 
+                        <Button 
+                          size="icon"
+                          variant="ghost"
+                          className="h-11 w-11 bg-white/10 hover:bg-white/20 text-white rounded-full border border-white/20"
                           onClick={toggleMute}
                           aria-label={isMuted ? "Unmute" : "Mute"}
                         >
-                          {isMuted ? <Volume2 size={18} style={{ opacity: 0.5 }} /> : <Volume2 size={18} />}
-                        </button>
+                          {isMuted ? <Volume2 className="h-5 w-5 opacity-50" /> : <Volume2 className="h-5 w-5" />}
+                        </Button>
                         
-                        <div className="volume-control">
+                        <div className="flex items-center gap-2">
                           <div 
-                            className="volume-slider" 
+                            className="w-20 h-1.5 bg-white/20 rounded-full cursor-pointer hover:h-2 transition-all"
                             onClick={handleVolumeChange}
                             role="slider"
-                            aria-label="Volume"
-                            aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
                           >
                             <div 
-                              className="volume-slider-filled" 
+                              className="h-full bg-white rounded-full transition-all"
                               style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
                             />
                           </div>
                         </div>
                         
-                        <span className="video-time">
+                        <span className="text-sm font-medium ml-auto text-shadow">
                           {formatTimeDisplay(currentTime)} / {formatTimeDisplay(duration)}
                         </span>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="preview-error">
+                  <div className="flex items-center justify-center p-8 text-gray-500 bg-gray-50 rounded-3xl">
                     <p>{error || 'No video available'}</p>
                   </div>
                 )}
@@ -942,433 +959,503 @@ function VideoEditor() {
           </div>
 
           {/* Timeline Section */}
-          <div className="timeline-section">
-            <div className="timeline-header">
-              <h4>Timeline</h4>
-              <div className="timeline-controls">
-                <button className="timeline-btn" onClick={addClip} disabled={isProcessing}>
-                  <Plus size={16} />
+          <div className="border-t border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-gray-900">Timeline</h4>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={addClip} disabled={isProcessing}>
+                  <Plus className="h-4 w-4" />
                   Add Clip
-                </button>
-                <button 
-                  className="timeline-btn" 
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
                   onClick={() => moveClip(-1)} 
                   disabled={selectedClipIndex === 0 || isProcessing}
                 >
-                  <ChevronUp size={16} />
+                  <ChevronUp className="h-4 w-4" />
                   Move Up
-                </button>
-                <button 
-                  className="timeline-btn" 
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
                   onClick={() => moveClip(1)} 
                   disabled={selectedClipIndex === clips.length - 1 || isProcessing}
                 >
-                  <ChevronDown size={16} />
+                  <ChevronDown className="h-4 w-4" />
                   Move Down
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Time Ruler */}
             {!isProcessing && clips.length > 0 && selectedClip && (
-              <div className="time-ruler">
-                <div className="time-markers">
+              <div className="relative h-10 bg-gray-200 rounded-lg mb-4 overflow-hidden">
+                <div className="flex h-full relative">
                   {Array.from({ length: Math.ceil(selectedClip.duration / 5) + 1 }, (_, i) => (
-                    <div key={i} className="time-marker">
-                      <div className="time-tick"></div>
-                      <span className="time-label">{i * 5}s</span>
+                    <div key={i} className="flex-1 flex flex-col items-start justify-start p-1">
+                      <div className="w-0.5 h-2 bg-gray-400 mb-1"></div>
+                      <span className="text-xs text-gray-600">{i * 5}s</span>
                     </div>
                   ))}
                 </div>
-                <div className="playhead" style={{ left: `${(currentTime / selectedClip.duration) * 100}%` }}>
-                  <div className="playhead-line"></div>
-                  <div className="playhead-handle"></div>
+                <div 
+                  className="absolute top-0 bottom-0 w-0.5 bg-[#1E201E] z-10 transition-all"
+                  style={{ left: `${(currentTime / selectedClip.duration) * 100}%` }}
+                >
+                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1E201E] rounded-full border-2 border-white shadow-lg"></div>
                 </div>
               </div>
             )}
 
-            <div className="clips-timeline">
-              {isProcessing ? (
-                <div className="timeline-loading">
-                  <p>Generating clips...</p>
-                </div>
-              ) : (
-                <>
-                  {clips.length > 0 ? (
-                    clips.map((clip, idx) => (
-                      <button
-                        key={clip.id}
-                        className={`clip-item ${idx === selectedClipIndex ? 'selected' : ''}`}
-                        onClick={() => setSelectedClipIndex(idx)}
-                        type="button"
-                        aria-label={`Select clip ${idx + 1}: ${clip.title}`}
-                      >
-                        <div className="clip-number">#{idx + 1}</div>
-                        <div className="clip-name">{clip.title}</div>
-                        <div className="clip-duration">{clip.duration}s</div>
-                        <div className="clip-time-range">
-                          {clip.startTime} - {clip.endTime}
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="timeline-empty">
-                      <p>No clips yet</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <ScrollArea className="w-full">
+              <div className="flex gap-3 pb-2">
+                {isProcessing ? (
+                  <div className="w-full text-center py-8 text-gray-500">
+                    <p>Generating clips...</p>
+                  </div>
+                ) : (
+                  <>
+                    {clips.length > 0 ? (
+                      clips.map((clip, idx) => (
+                        <Card
+                          key={clip.id}
+                          className={cn(
+                            "min-w-[200px] cursor-pointer transition-all",
+                            idx === selectedClipIndex 
+                              ? "border-[#1E201E] border-2 bg-[#1E201E]/5 shadow-md" 
+                              : "border-gray-200 hover:border-gray-300"
+                          )}
+                          onClick={() => setSelectedClipIndex(idx)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="text-xs font-bold text-[#1E201E] mb-2">#{idx + 1}</div>
+                            <div className="text-sm font-semibold text-gray-900 mb-1 truncate">{clip.title}</div>
+                            <div className="text-xs text-[#1E201E] font-semibold mb-1">{clip.duration}s</div>
+                            <div className="text-xs text-gray-500 font-mono">
+                              {clip.startTime} - {clip.endTime}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <div className="w-full text-center py-8 text-gray-500">
+                        <p>No clips yet</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </ScrollArea>
           </div>
         </main>
 
         {/* Right Panel - Properties */}
-        <aside className={`properties-panel ${!isRightPanelVisible ? 'collapsed' : ''}`}>
-          <div className="panel-header">
-            <h3>Properties</h3>
-            <p>Edit selected clip</p>
-          </div>
-
-          {selectedClip ? (
-            <div className="properties-content">
-              <div className="property-group">
-                <h4>Title</h4>
-                <input
-                  type="text"
-                  value={clipTitle}
-                  onChange={(e) => setClipTitle(e.target.value)}
-                  className="property-input"
-                  disabled={isProcessing}
-                  aria-label="Clip title"
-                />
-              </div>
-
-              <div className="property-group">
-                <h4>Time Range</h4>
-                <div className="time-range-inputs">
-                  <input
-                    type="text"
-                    value={selectedClip.startTime}
-                    readOnly
-                    className="time-input"
-                    aria-label="Start time"
-                  />
-                  <input
-                    type="text"
-                    value={selectedClip.endTime}
-                    readOnly
-                    className="time-input"
-                    aria-label="End time"
-                  />
-                </div>
-              </div>
-
-              <div className="property-group">
-                <h4>Duration</h4>
-                <div className="duration-slider">
-                  <input
-                    type="range"
-                    min="15"
-                    max="60"
-                    value={clipDuration}
-                    onChange={(e) => setClipDuration(Number.parseInt(e.target.value, 10))}
-                    className="slider"
-                    disabled={isProcessing}
-                  />
-                  <span className="duration-value">{clipDuration}s</span>
-                </div>
-                <div className="duration-presets">
-                  <button 
-                    className={clipDuration === 15 ? 'active' : ''}
-                    onClick={() => setClipDuration(15)}
-                    disabled={isProcessing}
-                  >
-                    15s
-                  </button>
-                  <button 
-                    className={clipDuration === 30 ? 'active' : ''}
-                    onClick={() => setClipDuration(30)}
-                    disabled={isProcessing}
-                  >
-                    30s
-                  </button>
-                  <button 
-                    className={clipDuration === 60 ? 'active' : ''}
-                    onClick={() => setClipDuration(60)}
-                    disabled={isProcessing}
-                  >
-                    60s
-                  </button>
-                </div>
-              </div>
-
-              {/* Editing Tools Section */}
-              <div className="property-group">
-                <h4>Editing Tools</h4>
-                <div className="editing-tools-grid">
-                  <button className="tool-btn" disabled={isProcessing} title="Trim Clip">
-                    <Scissors size={18} />
-                    <span>Trim</span>
-                  </button>
-                  <button className="tool-btn" disabled={isProcessing} title="Add Text">
-                    <Type size={18} />
-                    <span>Text</span>
-                  </button>
-                  <button className="tool-btn" disabled={isProcessing} title="Adjust Audio">
-                    <Volume2 size={18} />
-                    <span>Audio</span>
-                  </button>
-                  <button className="tool-btn" disabled={isProcessing} title="Apply Effects">
-                    <Wand2 size={18} />
-                    <span>Effects</span>
-                  </button>
-                  <button className="tool-btn" disabled={isProcessing} title="Add Layers">
-                    <Layers size={18} />
-                    <span>Layers</span>
-                  </button>
-                  <button className="tool-btn" disabled={isProcessing} title="Rotate Video">
-                    <RotateCw size={18} />
-                    <span>Rotate</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Transform Section */}
-              <div className="property-group">
-                <h4>Transform</h4>
-                <div className="transform-controls">
-                  <button className="transform-btn" disabled={isProcessing}>
-                    <ZoomIn size={16} />
-                    Zoom In
-                  </button>
-                  <button className="transform-btn" disabled={isProcessing}>
-                    <ZoomOut size={16} />
-                    Zoom Out
-                  </button>
-                  <button className="transform-btn" disabled={isProcessing}>
-                    <Maximize2 size={16} />
-                    Fit Screen
-                  </button>
-                </div>
-              </div>
-
-              {/* Clip Actions Section */}
-              <div className="property-group">
-                <h4>Clip Actions</h4>
-                <div className="clip-actions">
-                  <button className="action-tool-btn" onClick={handleDuplicateClip} disabled={isProcessing}>
-                    <Copy size={16} />
-                    Duplicate
-                  </button>
-                  <button className="action-tool-btn save-btn" disabled={isProcessing}>
-                    <Save size={16} />
-                    Save
-                  </button>
-                  <button 
-                    className="action-tool-btn delete-btn" 
-                    onClick={handleDeleteClip} 
-                    disabled={isProcessing || clips.length <= 1}
-                  >
-                    <Trash2 size={16} />
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              {/* Advanced Trim Controls */}
-              <div className="property-group">
-                <h4>Trim Controls</h4>
-                <div className="trim-controls">
-                  <button className="trim-btn" disabled={isProcessing}>
-                    <SkipBackIcon size={16} />
-                    Trim Start
-                  </button>
-                  <button className="trim-btn" disabled={isProcessing}>
-                    Trim End
-                    <SkipForward size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Clip Order */}
-              <div className="property-group">
-                <h4>Clip Order</h4>
-                <div className="order-display">
-                  <input
-                    type="number"
-                    value={selectedClipIndex + 1}
-                    readOnly
-                    className="order-input"
-                  />
-                  <span>of {clips.length}</span>
-                </div>
-              </div>
+        {isRightPanelVisible && (
+          <aside className="border-l border-gray-200 bg-white overflow-y-auto">
+            <div className="border-b border-gray-200 p-4 bg-gray-50">
+              <h3 className="text-base font-semibold text-gray-900">Properties</h3>
+              <p className="text-sm text-gray-500">Edit selected clip</p>
             </div>
-          ) : (
-            <div className="properties-empty">
-              <p>{isProcessing ? 'Processing video...' : 'No clip selected'}</p>
-            </div>
-          )}
-        </aside>
+
+            {selectedClip ? (
+              <ScrollArea className="p-4">
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Title</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Input
+                        type="text"
+                        value={clipTitle}
+                        onChange={(e) => setClipTitle(e.target.value)}
+                        disabled={isProcessing}
+                        aria-label="Clip title"
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Time Range</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="text"
+                          value={selectedClip.startTime}
+                          readOnly
+                          className="text-center"
+                          aria-label="Start time"
+                        />
+                        <Input
+                          type="text"
+                          value={selectedClip.endTime}
+                          readOnly
+                          className="text-center"
+                          aria-label="End time"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Duration</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <Slider
+                          value={[clipDuration]}
+                          onValueChange={(value) => setClipDuration(value[0])}
+                          min={15}
+                          max={60}
+                          step={1}
+                          disabled={isProcessing}
+                          className="flex-1"
+                        />
+                        <span className="text-sm font-semibold text-[#1E201E] min-w-[40px]">{clipDuration}s</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          variant={clipDuration === 15 ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setClipDuration(15)}
+                          disabled={isProcessing}
+                          className={clipDuration === 15 ? 'bg-[#1E201E] hover:bg-[#1E201E]/90 text-white' : ''}
+                        >
+                          15s
+                        </Button>
+                        <Button
+                          variant={clipDuration === 30 ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setClipDuration(30)}
+                          disabled={isProcessing}
+                          className={clipDuration === 30 ? 'bg-[#1E201E] hover:bg-[#1E201E]/90 text-white' : ''}
+                        >
+                          30s
+                        </Button>
+                        <Button
+                          variant={clipDuration === 60 ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setClipDuration(60)}
+                          disabled={isProcessing}
+                          className={clipDuration === 60 ? 'bg-[#1E201E] hover:bg-[#1E201E]/90 text-white' : ''}
+                        >
+                          60s
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Editing Tools</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <Scissors className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Trim</span>
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <Type className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Text</span>
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <Volume2 className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Audio</span>
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <Wand2 className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Effects</span>
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <Layers className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Layers</span>
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} className="h-20 flex-col">
+                          <RotateCw className="h-5 w-5 mb-1" />
+                          <span className="text-xs">Rotate</span>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Transform</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" disabled={isProcessing} size="sm">
+                          <ZoomIn className="h-4 w-4 mr-2" />
+                          Zoom In
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} size="sm">
+                          <ZoomOut className="h-4 w-4 mr-2" />
+                          Zoom Out
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} size="sm" className="col-span-2">
+                          <Maximize2 className="h-4 w-4 mr-2" />
+                          Fit Screen
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Clip Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <Button variant="outline" className="w-full justify-start" onClick={handleDuplicateClip} disabled={isProcessing}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Duplicate
+                      </Button>
+                      <Button variant="outline" className="w-full justify-start" disabled={isProcessing}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" 
+                        onClick={handleDeleteClip} 
+                        disabled={isProcessing || clips.length <= 1}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Trim Controls</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" disabled={isProcessing} size="sm">
+                          <SkipBackIcon className="h-4 w-4 mr-2" />
+                          Trim Start
+                        </Button>
+                        <Button variant="outline" disabled={isProcessing} size="sm">
+                          Trim End
+                          <SkipForward className="h-4 w-4 ml-2" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Clip Order</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={selectedClipIndex + 1}
+                          readOnly
+                          className="w-16 text-center"
+                        />
+                        <span className="text-sm text-gray-600">of {clips.length}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="p-8 text-center text-gray-500">
+                <p>{isProcessing ? 'Processing video...' : 'No clip selected'}</p>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
 
       {/* Publish Modal */}
-      {showPublishModal && (
-        <div className="modal-overlay" onClick={() => setShowPublishModal(false)} role="presentation">
-          <div className="publish-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h2>Publish Your Short</h2>
-              <button className="modal-close" onClick={() => setShowPublishModal(false)} aria-label="Close modal">
-                ×
-              </button>
-            </div>
+      <Dialog open={showPublishModal} onOpenChange={setShowPublishModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Publish Your Short</DialogTitle>
+            <DialogDescription>Choose platforms and configure your video settings</DialogDescription>
+          </DialogHeader>
 
-            <div className="modal-content">
-              {/* Platform Selection */}
-              <div className="modal-section">
-                <h3>Select Platforms</h3>
-                <p className="section-description">Choose where you want to publish your video</p>
-                <div className="platforms-grid">
-                  <button 
-                    className={`platform-card ${selectedPlatforms.includes('youtube') ? 'selected' : ''}`}
-                    onClick={() => handlePlatformToggle('youtube')}
-                  >
-                    <div className="platform-icon youtube">
-                      <Play size={24} />
+          <div className="space-y-6 py-4">
+            {/* Platform Selection */}
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Select Platforms</h3>
+              <p className="text-sm text-gray-600 mb-4">Choose where you want to publish your video</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Card
+                  className={cn(
+                    "cursor-pointer transition-all",
+                    selectedPlatforms.includes('youtube') ? "border-[#1E201E] border-2 bg-[#1E201E]/5" : "border-gray-200 hover:border-gray-300"
+                  )}
+                  onClick={() => handlePlatformToggle('youtube')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
+                        <Play className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-gray-900">YouTube Shorts</h4>
+                        <p className="text-xs text-gray-500">9:16 • 60s max</p>
+                      </div>
+                      {selectedPlatforms.includes('youtube') && (
+                        <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
+                      )}
                     </div>
-                    <div className="platform-info">
-                      <h4>YouTube Shorts</h4>
-                      <p>9:16 • 60s max</p>
-                    </div>
-                    {selectedPlatforms.includes('youtube') && (
-                      <div className="selected-badge">✓</div>
-                    )}
-                  </button>
+                  </CardContent>
+                </Card>
 
-                  <button 
-                    className={`platform-card ${selectedPlatforms.includes('instagram') ? 'selected' : ''}`}
-                    onClick={() => handlePlatformToggle('instagram')}
-                  >
-                    <div className="platform-icon instagram">
-                      <Video size={24} />
+                <Card
+                  className={cn(
+                    "cursor-pointer transition-all",
+                    selectedPlatforms.includes('instagram') ? "border-[#1E201E] border-2 bg-[#1E201E]/5" : "border-gray-200 hover:border-gray-300"
+                  )}
+                  onClick={() => handlePlatformToggle('instagram')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 rounded-lg flex items-center justify-center">
+                        <Video className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-gray-900">Instagram Reels</h4>
+                        <p className="text-xs text-gray-500">9:16 • 90s max</p>
+                      </div>
+                      {selectedPlatforms.includes('instagram') && (
+                        <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
+                      )}
                     </div>
-                    <div className="platform-info">
-                      <h4>Instagram Reels</h4>
-                      <p>9:16 • 90s max</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={cn(
+                    "cursor-pointer transition-all",
+                    selectedPlatforms.includes('tiktok') ? "border-[#1E201E] border-2 bg-[#1E201E]/5" : "border-gray-200 hover:border-gray-300"
+                  )}
+                  onClick={() => handlePlatformToggle('tiktok')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center">
+                        <Play className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-gray-900">TikTok</h4>
+                        <p className="text-xs text-gray-500">9:16 • 10m max</p>
+                      </div>
+                      {selectedPlatforms.includes('tiktok') && (
+                        <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
+                      )}
                     </div>
-                    {selectedPlatforms.includes('instagram') && (
-                      <div className="selected-badge">✓</div>
-                    )}
-                  </button>
+                  </CardContent>
+                </Card>
 
-                  <button 
-                    className={`platform-card ${selectedPlatforms.includes('tiktok') ? 'selected' : ''}`}
-                    onClick={() => handlePlatformToggle('tiktok')}
-                  >
-                    <div className="platform-icon tiktok">
-                      <Play size={24} />
+                <Card
+                  className={cn(
+                    "cursor-pointer transition-all",
+                    selectedPlatforms.includes('facebook') ? "border-[#1E201E] border-2 bg-[#1E201E]/5" : "border-gray-200 hover:border-gray-300"
+                  )}
+                  onClick={() => handlePlatformToggle('facebook')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <Video className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-gray-900">Facebook Reels</h4>
+                        <p className="text-xs text-gray-500">9:16 • 90s max</p>
+                      </div>
+                      {selectedPlatforms.includes('facebook') && (
+                        <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
+                      )}
                     </div>
-                    <div className="platform-info">
-                      <h4>TikTok</h4>
-                      <p>9:16 • 10m max</p>
-                    </div>
-                    {selectedPlatforms.includes('tiktok') && (
-                      <div className="selected-badge">✓</div>
-                    )}
-                  </button>
-
-                  <button 
-                    className={`platform-card ${selectedPlatforms.includes('facebook') ? 'selected' : ''}`}
-                    onClick={() => handlePlatformToggle('facebook')}
-                  >
-                    <div className="platform-icon facebook">
-                      <Video size={24} />
-                    </div>
-                    <div className="platform-info">
-                      <h4>Facebook Reels</h4>
-                      <p>9:16 • 90s max</p>
-                    </div>
-                    {selectedPlatforms.includes('facebook') && (
-                      <div className="selected-badge">✓</div>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Video Settings */}
-              <div className="modal-section">
-                <h3>Video Settings</h3>
-                <div className="settings-form">
-                  <div className="form-group">
-                    <label htmlFor="video-title">Title</label>
-                    <input
-                      id="video-title"
-                      type="text"
-                      placeholder="Enter video title..."
-                      value={publishSettings.title}
-                      onChange={(e) => setPublishSettings({...publishSettings, title: e.target.value})}
-                      className="form-input"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="video-description">Description</label>
-                    <textarea
-                      id="video-description"
-                      placeholder="Add a description..."
-                      value={publishSettings.description}
-                      onChange={(e) => setPublishSettings({...publishSettings, description: e.target.value})}
-                      className="form-textarea"
-                      rows="3"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="video-tags">Tags (comma separated)</label>
-                    <input
-                      id="video-tags"
-                      type="text"
-                      placeholder="trending, viral, shorts..."
-                      value={publishSettings.tags}
-                      onChange={(e) => setPublishSettings({...publishSettings, tags: e.target.value})}
-                      className="form-input"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="aspect-ratio">Aspect Ratio</label>
-                    <select
-                      id="aspect-ratio"
-                      value={publishSettings.aspectRatio}
-                      onChange={(e) => setPublishSettings({...publishSettings, aspectRatio: e.target.value})}
-                      className="form-select"
-                    >
-                      <option value="9:16">9:16 (Vertical - Recommended)</option>
-                      <option value="1:1">1:1 (Square)</option>
-                      <option value="16:9">16:9 (Horizontal)</option>
-                      <option value="4:5">4:5 (Instagram Feed)</option>
-                    </select>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
 
-            <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowPublishModal(false)}>
-                Cancel
-              </button>
-              <button 
-                className="modal-btn publish" 
-                onClick={handlePublishConfirm}
-                disabled={selectedPlatforms.length === 0}
-              >
-                <Share2 size={18} />
-                Publish to {selectedPlatforms.length > 0 ? `${selectedPlatforms.length} Platform${selectedPlatforms.length > 1 ? 's' : ''}` : 'Platforms'}
-              </button>
+            <Separator />
+
+            {/* Video Settings */}
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 mb-4">Video Settings</h3>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="video-title" className="text-sm font-medium text-gray-700 mb-2 block">Title</label>
+                  <Input
+                    id="video-title"
+                    type="text"
+                    placeholder="Enter video title..."
+                    value={publishSettings.title}
+                    onChange={(e) => setPublishSettings({...publishSettings, title: e.target.value})}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="video-description" className="text-sm font-medium text-gray-700 mb-2 block">Description</label>
+                  <textarea
+                    id="video-description"
+                    placeholder="Add a description..."
+                    value={publishSettings.description}
+                    onChange={(e) => setPublishSettings({...publishSettings, description: e.target.value})}
+                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    rows="3"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="video-tags" className="text-sm font-medium text-gray-700 mb-2 block">Tags (comma separated)</label>
+                  <Input
+                    id="video-tags"
+                    type="text"
+                    placeholder="trending, viral, shorts..."
+                    value={publishSettings.tags}
+                    onChange={(e) => setPublishSettings({...publishSettings, tags: e.target.value})}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="aspect-ratio" className="text-sm font-medium text-gray-700 mb-2 block">Aspect Ratio</label>
+                  <select
+                    id="aspect-ratio"
+                    value={publishSettings.aspectRatio}
+                    onChange={(e) => setPublishSettings({...publishSettings, aspectRatio: e.target.value})}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="9:16">9:16 (Vertical - Recommended)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="16:9">16:9 (Horizontal)</option>
+                    <option value="4:5">4:5 (Instagram Feed)</option>
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPublishModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white"
+              onClick={handlePublishConfirm}
+              disabled={selectedPlatforms.length === 0}
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              Publish to {selectedPlatforms.length > 0 ? `${selectedPlatforms.length} Platform${selectedPlatforms.length > 1 ? 's' : ''}` : 'Platforms'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
