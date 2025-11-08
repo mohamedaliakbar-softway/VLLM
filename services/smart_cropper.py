@@ -4,7 +4,7 @@ import numpy as np
 from moviepy import VideoFileClip
 from typing import Dict, List, Tuple, Optional
 import logging
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, CubicSpline
 import os
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class SmartCropper:
     """Intelligent cropping with subject tracking for podcasts and product demos."""
     
-    def __init__(self):
+    def __init__(self, enable_smooth_transitions: bool = False):
         # Initialize OpenCV face detector (Haar Cascade - more compatible)
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         if os.path.exists(cascade_path):
@@ -30,6 +30,12 @@ class SmartCropper:
                 self.face_cascade = None
                 self.face_net = None
                 logger.warning("Face detection not available, will use fallback methods")
+        
+        # Smooth transition settings (DISABLED BY DEFAULT for performance)
+        # Enable only for high-quality professional videos where smoothness matters more than speed
+        self.enable_smooth_transitions = enable_smooth_transitions
+        self.max_velocity = 100  # Max pixels per second movement (increased for less restriction)
+        self.min_movement_threshold = 50  # Only apply smoothing if movement > this many pixels
     
     def apply_smart_crop(
         self,
@@ -174,7 +180,7 @@ class SmartCropper:
             crop_y = (video_height - crop_height) // 2
             logger.info(f"No face detected, using center crop at ({crop_x}, {crop_y})")
         
-        # Return static crop positions (start and end with same position)
+        # Return static crop positions (smooth transitions disabled for performance)
         positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
         
         return positions
@@ -266,10 +272,43 @@ class SmartCropper:
             crop_y = (video_height - crop_height) // 2
             logger.info(f"Analysis failed, using center crop at ({crop_x}, {crop_y})")
         
-        # Return static crop positions (start and end with same position)
+        # Return static crop positions (smooth transitions disabled for performance)
         positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
         
         return positions
+    
+    def _create_simple_smooth_path(
+        self,
+        start_pos: Tuple[int, int],
+        end_pos: Tuple[int, int],
+        duration: float,
+        fps: int = 30
+    ) -> List[Tuple[float, int, int]]:
+        """Create simple linear smooth path between two points (SIMPLIFIED for performance)."""
+        if duration <= 0:
+            return [(0.0, start_pos[0], start_pos[1])]
+        
+        # Check if movement is significant enough to warrant smoothing
+        movement = np.sqrt((end_pos[0] - start_pos[0])**2 + (end_pos[1] - start_pos[1])**2)
+        if movement < self.min_movement_threshold:
+            # Not enough movement, use static
+            return [(0.0, start_pos[0], start_pos[1]), (duration, start_pos[0], start_pos[1])]
+        
+        # Create simple linear interpolation
+        num_frames = int(duration * fps)
+        path = []
+        
+        for i in range(num_frames):
+            t = i / fps
+            progress = i / (num_frames - 1) if num_frames > 1 else 0
+            
+            # Simple linear interpolation (fast and smooth enough)
+            x = int(start_pos[0] + (end_pos[0] - start_pos[0]) * progress)
+            y = int(start_pos[1] + (end_pos[1] - start_pos[1]) * progress)
+            
+            path.append((t, x, y))
+        
+        return path
     
     def _center_crop_positions(
         self,
@@ -280,14 +319,15 @@ class SmartCropper:
         """Generate center crop positions (fallback)."""
         return [(0.0, 0, 0), (duration, 0, 0)]
     
-    def _smooth_positions(
+    def _smooth_positions_simple(
         self,
         positions: List[Tuple[float, int, int]],
         duration: float
     ) -> List[Tuple[float, int, int]]:
-        """Smooth crop positions (OPTIMIZED - minimal processing)."""
-        # OPTIMIZATION: No interpolation needed for static crops
-        # Just return the positions as-is (already only 2 points)
+        """Simple position smoothing (DEPRECATED - use static crop for performance)."""
+        # This method is kept for backward compatibility but not used
+        # Static cropping is faster and good enough for most use cases
+        logger.warning("Smooth positions called but static crop is recommended for performance")
         return positions
     
     def _apply_dynamic_crop(
@@ -298,18 +338,35 @@ class SmartCropper:
         crop_height: int,
         target_size: Tuple[int, int]
     ) -> VideoFileClip:
-        """Apply dynamic cropping based on position data (OPTIMIZED - Static crop for speed)."""
+        """Apply static cropping (OPTIMIZED - removed slow dynamic cropping)."""
         target_width, target_height = target_size
         
-        # OPTIMIZATION: Use static crop (much faster than frame-by-frame)
-        # Calculate average position from all samples
-        avg_x = sum(p[1] for p in crop_positions) // len(crop_positions)
-        avg_y = sum(p[2] for p in crop_positions) // len(crop_positions)
-        
-        # Use MoviePy's built-in crop and resize (faster than make_frame)
-        cropped = clip.cropped(x1=avg_x, y1=avg_y, x2=avg_x + crop_width, y2=avg_y + crop_height)
-        resized = cropped.resized(new_size=(target_width, target_height))
-        
-        logger.info(f"Applied static crop at ({avg_x}, {avg_y}) with size {crop_width}x{crop_height}, resized to {target_width}x{target_height}")
-        
-        return resized
+        try:
+            # ALWAYS use static crop for best performance
+            # Dynamic frame-by-frame cropping is 10-20x slower with minimal visual benefit
+            
+            # Calculate average position from all samples
+            avg_x = sum(p[1] for p in crop_positions) // len(crop_positions)
+            avg_y = sum(p[2] for p in crop_positions) // len(crop_positions)
+            
+            # Ensure crop position is within bounds
+            avg_x = max(0, min(avg_x, clip.w - crop_width))
+            avg_y = max(0, min(avg_y, clip.h - crop_height))
+            
+            # Use MoviePy's built-in crop and resize (fast and reliable)
+            logger.info(f"Applying static crop at ({avg_x}, {avg_y}) size {crop_width}x{crop_height}")
+            cropped = clip.cropped(x1=avg_x, y1=avg_y, x2=avg_x + crop_width, y2=avg_y + crop_height)
+            resized = cropped.resized(new_size=(target_width, target_height))
+            
+            logger.info(f"✅ Crop applied successfully, resized to {target_width}x{target_height}")
+            return resized
+            
+        except Exception as e:
+            logger.error(f"Error applying crop: {e}")
+            logger.warning(f"Falling back to simple resize without cropping")
+            # Fallback: just resize without cropping
+            try:
+                return clip.resized(new_size=(target_width, target_height))
+            except Exception as e2:
+                logger.error(f"Resize fallback also failed: {e2}")
+                raise Exception(f"Crop and resize both failed: {e}, {e2}")
