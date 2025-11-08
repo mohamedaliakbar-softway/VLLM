@@ -1434,7 +1434,7 @@ function VideoEditor() {
         {/* Center Panel - Video Preview (Fixed Size) */}
         <main className="flex flex-col bg-white p-6 overflow-hidden">
           <div className="flex-1 flex items-center justify-center min-h-0">
-            <div className="relative w-[360px] h-[480px] bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
+            <div className="relative w-[360px] aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
                 // Loading animation with strike-through list
                 <div className="relative w-full h-full rounded-3xl overflow-hidden">
@@ -1711,73 +1711,83 @@ function VideoEditor() {
               )}
             </div>
           </div>
-
-          {/* Timeline Section */}
-          <div className="border-t border-gray-200 bg-gray-50 p-4 flex-shrink-0 max-h-[300px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-semibold text-gray-900">Timeline</h4>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={addClip}
-                  disabled={isProcessing}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Clip
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => moveClip(-1)}
-                  disabled={selectedClipIndex === 0 || isProcessing}
-                >
-                  <ChevronUp className="h-4 w-4" />
-                  Move Up
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => moveClip(1)}
-                  disabled={
-                    selectedClipIndex === clips.length - 1 || isProcessing
-                  }
-                >
-                  <ChevronDown className="h-4 w-4" />
-                  Move Down
-                </Button>
-              </div>
-            </div>
-
-            {/* Time Ruler */}
-            {!isProcessing && clips.length > 0 && selectedClip && (
-              <div className="relative h-10 bg-gray-200 rounded-lg overflow-hidden">
-                <div className="flex h-full relative">
-                  {Array.from(
-                    { length: Math.ceil(selectedClip.duration / 5) + 1 },
-                    (_, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 flex flex-col items-start justify-start p-1"
-                      >
-                        <div className="w-0.5 h-2 bg-gray-400 mb-1"></div>
-                        <span className="text-xs text-gray-600">{i * 5}s</span>
-                      </div>
-                    ),
-                  )}
-                </div>
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-[#1E201E] z-10 transition-all"
-                  style={{
-                    left: `${(currentTime / selectedClip.duration) * 100}%`,
-                  }}
-                >
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1E201E] rounded-full border-2 border-white shadow-lg"></div>
-                </div>
-              </div>
-            )}
-          </div>
         </main>
+
+        {/* Right Panel - Timeline */}
+        {isRightPanelVisible && (
+          <aside className="flex flex-col bg-white border-l border-gray-200 overflow-hidden">
+            {/* Timeline Section */}
+            <div className="border-t border-gray-200 bg-gray-50 p-4 flex flex-col pt-16 space-y-4">
+              <h4 className="text-sm font-semibold text-gray-900">Timeline</h4>
+              
+              {/* Add Clip Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addClip}
+                disabled={isProcessing}
+                className="w-full justify-start"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Clip
+              </Button>
+              
+              {/* Move Up Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => moveClip(-1)}
+                disabled={selectedClipIndex === 0 || isProcessing}
+                className="w-full justify-start"
+              >
+                <ChevronUp className="h-4 w-4 mr-2" />
+                Move Up
+              </Button>
+              
+              {/* Move Down Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => moveClip(1)}
+                disabled={
+                  selectedClipIndex === clips.length - 1 || isProcessing
+                }
+                className="w-full justify-start"
+              >
+                <ChevronDown className="h-4 w-4 mr-2" />
+                Move Down
+              </Button>
+
+              {/* Time Ruler */}
+              {!isProcessing && clips.length > 0 && selectedClip && (
+                <div className="relative h-10 bg-gray-200 rounded-lg overflow-hidden">
+                  <div className="flex h-full relative">
+                    {Array.from(
+                      { length: Math.ceil(selectedClip.duration / 5) + 1 },
+                      (_, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 flex flex-col items-start justify-start p-1"
+                        >
+                          <div className="w-0.5 h-2 bg-gray-400 mb-1"></div>
+                          <span className="text-xs text-gray-600">{i * 5}s</span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-[#1E201E] z-10 transition-all"
+                    style={{
+                      left: `${(currentTime / selectedClip.duration) * 100}%`,
+                    }}
+                  >
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1E201E] rounded-full border-2 border-white shadow-lg"></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
             </div>
       </div>
 
