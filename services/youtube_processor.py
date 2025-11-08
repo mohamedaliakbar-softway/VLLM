@@ -333,9 +333,9 @@ class YouTubeProcessor:
             
             downloaded_segments = []
             
-            # Get video stream URL without downloading
+            # Get video stream URL without downloading - request highest quality
             ydl_opts = self._get_ydl_opts({
-                'format': 'best[ext=mp4]/best',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'quiet': True,
                 'no_warnings': True,
             })
