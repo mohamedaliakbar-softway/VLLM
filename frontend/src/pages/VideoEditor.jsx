@@ -19,7 +19,6 @@ import {
   GripVertical,
   Maximize,
   Minimize,
-  PanelLeft,
 } from "lucide-react";
 import axios from "axios";
 import { extractVideoId, getThumbnailUrl } from "../utils/youtube";
@@ -47,6 +46,7 @@ function VideoEditor() {
   const location = useLocation();
   const videoRef = useRef(null);
   const hasProcessedRef = useRef(false); // Track if video has been processed to prevent double submission
+  const chatScrollRef = useRef(null); // Ref for auto-scrolling chat
 
   const youtubeUrl = location.state?.youtubeUrl;
   const videoId = extractVideoId(youtubeUrl);
@@ -58,7 +58,6 @@ function VideoEditor() {
     useState("Analyzing video...");
   const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
   const MAX_API_RETRIES = 3; // Maximum retries at API level
 
   // Loading animation states
@@ -115,6 +114,11 @@ function VideoEditor() {
     useState("bold_modern");
   const [showCaptionPreview, setShowCaptionPreview] = useState(false);
   const [currentCaption, setCurrentCaption] = useState('');
+  
+  // Caption generation timer states
+  const [isCaptionGenerating, setIsCaptionGenerating] = useState(false);
+  const [captionTimerSeconds, setCaptionTimerSeconds] = useState(90); // 1:30 in seconds
+  const captionTimerRef = useRef(null);
 
   // Available caption styles
   const CAPTION_STYLES = {
@@ -723,6 +727,32 @@ function VideoEditor() {
   };
 
   const handleQuickAction = async (action) => {
+    // Don't allow if AI is already thinking
+    if (isAiThinking) return;
+
+    // Check if this is "Add live captions" action
+    const isCaptionAction = action.toLowerCase().includes("caption");
+    
+    if (isCaptionAction) {
+      // Start the caption generation timer
+      setIsCaptionGenerating(true);
+      setCaptionTimerSeconds(90); // Reset to 1:30
+      
+      // Start countdown timer
+      captionTimerRef.current = setInterval(() => {
+        setCaptionTimerSeconds((prev) => {
+          if (prev <= 1) {
+            if (captionTimerRef.current) {
+              clearInterval(captionTimerRef.current);
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    // Add user message to chat
     setChatHistory((prev) => [
       ...prev,
       {
@@ -732,10 +762,98 @@ function VideoEditor() {
       },
     ]);
 
-    // Trigger AI processing for quick actions
-    const fakeEvent = { preventDefault: () => {}, target: { value: action } };
-    setChatMessage(action);
-    await handleSendMessage(fakeEvent);
+    // Show AI thinking state
+    setIsAiThinking(true);
+    setChatHistory((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "🤔 Processing your request...",
+        timestamp: new Date().toISOString(),
+        isThinking: true,
+      },
+    ]);
+
+    try {
+      // Call the chat API with the quick action
+      const response = await axios.post("/api/v1/chat", {
+        message: action,
+        clips: clips,
+        selected_clip_index: selectedClipIndex,
+      });
+
+      const { clips: updatedClips, response: aiResponse, success } = response.data;
+
+      // Remove thinking message
+      setChatHistory((prev) => prev.filter((msg) => !msg.isThinking));
+
+      // Show AI's response
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: aiResponse || "Done!",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
+      // Update clips if they changed
+      if (success && updatedClips) {
+        // Map updatedClips to proper format with URLs
+        const formattedClips = updatedClips.map((clip, idx) => ({
+          id: clip.id || idx + 1,
+          title: clip.title || `Highlight ${idx + 1}`,
+          startTime: clip.startTime || clip.start_time || "0:00",
+          endTime: clip.endTime || clip.end_time || "0:30",
+          duration: clip.duration || 30,
+          filename: clip.filename,
+          url: clip.download_url || clip.url || `/api/v1/download/${clip.filename}`,
+          has_captions: clip.has_captions || clip.hasCaptions || false,
+        }));
+        
+        setClips(formattedClips);
+        
+        // If captions were added, stop the timer
+        if (isCaptionAction && formattedClips[selectedClipIndex]?.has_captions) {
+          if (captionTimerRef.current) {
+            clearInterval(captionTimerRef.current);
+          }
+          setIsCaptionGenerating(false);
+        }
+        
+        // Force video reload for the current clip
+        if (videoRef.current && formattedClips[selectedClipIndex]) {
+          const newClip = formattedClips[selectedClipIndex];
+          // Force reload by appending timestamp to bypass cache
+          const videoUrl = `${newClip.url}?t=${Date.now()}`;
+          videoRef.current.src = videoUrl;
+          videoRef.current.load();
+        }
+      }
+    } catch (error) {
+      // Remove thinking message
+      setChatHistory((prev) => prev.filter((msg) => !msg.isThinking));
+
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `❌ Sorry, I encountered an error: ${error.response?.data?.detail || error.message}. Please try again.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      console.error("Quick action error:", error);
+      
+      // Stop timer on error
+      if (isCaptionAction) {
+        if (captionTimerRef.current) {
+          clearInterval(captionTimerRef.current);
+        }
+        setIsCaptionGenerating(false);
+      }
+    } finally {
+      setIsAiThinking(false);
+    }
   };
 
   const moveClip = (direction) => {
@@ -1151,12 +1269,24 @@ function VideoEditor() {
             })
           );
 
+          // Stop the caption timer if it's running
+          if (captionTimerRef.current) {
+            clearInterval(captionTimerRef.current);
+          }
+          setIsCaptionGenerating(false);
+
           setIsProcessing(false);
           setProcessingProgress(0);
         } else if (status === "failed") {
           clearInterval(pollInterval);
           setIsProcessing(false);
           setProcessingProgress(0);
+          
+          // Stop the caption timer on failure
+          if (captionTimerRef.current) {
+            clearInterval(captionTimerRef.current);
+          }
+          setIsCaptionGenerating(false);
           
           // Remove loading message and add error
           setChatHistory((prev) => 
@@ -1172,6 +1302,12 @@ function VideoEditor() {
         setIsProcessing(false);
         setProcessingProgress(0);
         console.error("Caption burn poll error:", error);
+        
+        // Stop the caption timer on error
+        if (captionTimerRef.current) {
+          clearInterval(captionTimerRef.current);
+        }
+        setIsCaptionGenerating(false);
         
         // Remove loading message and add error
         setChatHistory((prev) => 
@@ -1225,6 +1361,48 @@ function VideoEditor() {
       videoRef.current.load();
     }
   }, [selectedClip?.url]);
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      // Use setTimeout to ensure DOM has updated
+      setTimeout(() => {
+        const scrollContainer = chatScrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+        if (scrollContainer) {
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    }
+  }, [chatHistory]);
+
+  // Cleanup caption timer on unmount
+  useEffect(() => {
+    return () => {
+      if (captionTimerRef.current) {
+        clearInterval(captionTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Watch for caption completion and stop timer
+  useEffect(() => {
+    if (isCaptionGenerating && selectedClip?.has_captions) {
+      // Caption video is ready, stop the timer
+      if (captionTimerRef.current) {
+        clearInterval(captionTimerRef.current);
+      }
+      // Don't close immediately, keep showing "Ready!" state
+      setCaptionTimerSeconds(0);
+      
+      // Auto-hide the timer after 3 seconds
+      setTimeout(() => {
+        setIsCaptionGenerating(false);
+      }, 3000);
+    }
+  }, [isCaptionGenerating, selectedClip?.has_captions]);
 
   return (
     <div className="h-screen bg-white flex overflow-hidden">
@@ -1311,7 +1489,52 @@ function VideoEditor() {
               </div>
             </div>
 
-            <ScrollArea className="flex-1 p-4">
+            {/* Caption Generation Timer */}
+            {isCaptionGenerating && (
+              <div className="border-b border-gray-200 px-4 py-3 bg-gradient-to-r from-purple-50 to-pink-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {captionTimerSeconds > 0 ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                        <span className="text-sm font-medium text-gray-700">
+                          Generating captions...
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center shadow-sm">
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <span className="text-sm font-semibold text-green-700">
+                          Ready!
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className={cn(
+                    "flex items-center gap-2 text-sm font-mono font-semibold px-3 py-1.5 rounded-md shadow-sm transition-all",
+                    captionTimerSeconds > 0 
+                      ? "bg-purple-100 text-purple-700 border border-purple-200" 
+                      : "bg-green-100 text-green-700 border border-green-200"
+                  )}>
+                    {captionTimerSeconds > 0 && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    <span>
+                      {captionTimerSeconds > 0 
+                        ? `≈ ${Math.floor(captionTimerSeconds / 60)}:${String(captionTimerSeconds % 60).padStart(2, '0')}`
+                        : "✓ 0:00"
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <ScrollArea ref={chatScrollRef} className="flex-1 p-4">
               <div className="space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
