@@ -435,17 +435,33 @@ function VideoEditor() {
       // Remove thinking message
       setChatHistory(prev => prev.filter(msg => !msg.isThinking));
 
-      // Execute the action based on AI response
-      if (action && parameters) {
-        await executeAiAction(action, parameters, updatedClips);
-      }
-
-      // Add AI response to chat
+      // IMMEDIATELY show AI's conversational reply (Copilot-like)
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: aiMessage || 'Done! Let me know if you need anything else.',
+        content: aiMessage || 'Got it! Working on that...',
         timestamp: new Date().toISOString()
       }]);
+
+      // THEN execute the action in the background
+      if (action && parameters) {
+        // Show what action is being performed
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: `🔄 Executing: ${action}...`,
+          timestamp: new Date().toISOString(),
+          isExecuting: true
+        }]);
+
+        await executeAiAction(action, parameters, updatedClips);
+
+        // Remove executing message and show completion
+        setChatHistory(prev => prev.filter(msg => !msg.isExecuting));
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: '✅ Done! Anything else I can help with?',
+          timestamp: new Date().toISOString()
+        }]);
+      }
 
     } catch (error) {
       // Remove thinking message
@@ -1038,7 +1054,11 @@ function VideoEditor() {
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-700 leading-relaxed">
+                      <div className={cn(
+                        "text-sm text-gray-700 leading-relaxed",
+                        msg.isThinking && "animate-pulse text-gray-500 italic",
+                        msg.isExecuting && "text-blue-600 font-medium"
+                      )}>
                         {msg.content}
                       </div>
                     </div>
