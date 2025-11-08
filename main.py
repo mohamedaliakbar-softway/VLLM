@@ -260,12 +260,52 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                         logger.info(f"Transcript extracted (attempt {attempt}): {len(video_info.get('transcript', ''))} chars")
                     except Exception as e:
                         logger.error(f"Failed to extract transcript (attempt {attempt}): {type(e).__name__}: {str(e)}")
+                        
+                        # On final attempt, try Vosk fallback before failing
                         if attempt == max_retries:
-                            logger.error(f"Traceback: {traceback.format_exc()}")
-                            raise RuntimeError(f"Transcript extraction failed after {max_retries} attempts: {str(e)}") from e
-                        # Wait before retry
-                        await asyncio.sleep(retry_delay * attempt)
-                        continue
+                            logger.warning("YouTube transcript failed. Attempting Vosk offline transcription fallback...")
+                            try:
+                                await progress_tracker.update_progress(job_id, "processing", 15, "Falling back to offline transcription (Vosk)...")
+                                jobs[job_id] = {"status": "processing", "progress": "Falling back to offline transcription (Vosk)...", "percent": 15}
+                                
+                                # Download video for Vosk processing
+                                video_download_info = youtube_processor.download_video(youtube_url)
+                                video_path = video_download_info['file_path']
+                                
+                                # Use Vosk to transcribe
+                                from services.caption_generator import CaptionGenerator
+                                caption_gen = CaptionGenerator()
+                                
+                                if caption_gen.use_vosk:
+                                    logger.info("Using Vosk for offline transcription...")
+                                    audio_path = caption_gen.extract_audio(video_path)
+                                    vosk_result = caption_gen.transcribe_with_vosk(audio_path)
+                                    
+                                    # Convert Vosk result to video_info format
+                                    video_info = {
+                                        'transcript': vosk_result.get('full_text', ''),
+                                        'video_id': video_download_info.get('video_id', ''),
+                                        'title': video_download_info.get('title', ''),
+                                        'duration': video_download_info.get('duration', 0),
+                                        'description': '',
+                                        'file_path': video_path
+                                    }
+                                    logger.info(f"Vosk transcription successful: {len(video_info['transcript'])} chars")
+                                    # Clean up audio file
+                                    if os.path.exists(audio_path):
+                                        os.remove(audio_path)
+                                    break  # Success with Vosk, exit retry loop
+                                else:
+                                    logger.warning("Vosk not available, cannot use offline transcription fallback")
+                                    raise RuntimeError(f"Transcript extraction failed after {max_retries} attempts and Vosk unavailable: {str(e)}") from e
+                            except Exception as vosk_error:
+                                logger.error(f"Vosk fallback also failed: {str(vosk_error)}")
+                                logger.error(f"Traceback: {traceback.format_exc()}")
+                                raise RuntimeError(f"All transcription methods failed. YouTube: {str(e)}, Vosk: {str(vosk_error)}") from e
+                        else:
+                            # Wait before retry
+                            await asyncio.sleep(retry_delay * attempt)
+                            continue
                 
                 if not video_info.get('transcript'):
                     logger.warning(f"No transcript found for {youtube_url} (attempt {attempt}), using title and description as fallback")

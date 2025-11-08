@@ -232,8 +232,9 @@ class YouTubeProcessor:
                     import time
                     
                     # Retry logic with exponential backoff for rate limiting
-                    max_retries = 5  # Increased from 3 to 5
-                    base_retry_delay = 5  # Start with 5 seconds instead of 1
+                    # Reduced retries - we have Vosk fallback for offline transcription
+                    max_retries = 2  # Reduced from 5 to 2 (max wait: 9s vs 155s)
+                    base_retry_delay = 3  # Reduced from 5 to 3 seconds
                     
                     for attempt in range(max_retries):
                         try:
@@ -243,8 +244,8 @@ class YouTubeProcessor:
                             break  # Success, exit retry loop
                         except requests.exceptions.HTTPError as http_err:
                             if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                                # Rate limited - wait longer with exponential backoff
-                                wait_time = base_retry_delay * (2 ** attempt)  # 5s, 10s, 20s, 40s, 80s
+                                # Rate limited - wait with exponential backoff (3s, 6s)
+                                wait_time = base_retry_delay * (2 ** attempt)
                                 logger.warning(
                                     f"Rate limited (429) on attempt {attempt + 1}/{max_retries} for video {video_id}, "
                                     f"waiting {wait_time}s before retry..."

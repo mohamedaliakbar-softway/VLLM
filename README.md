@@ -259,6 +259,26 @@ The Gemini AI analyzes videos looking for:
 
 Each segment is scored 1-10 for engagement and marketing effectiveness.
 
+## Documentation
+
+### Core Documentation
+- **[Setup Instructions](SETUP_INSTRUCTIONS.md)** - Complete setup and configuration guide
+- **[Transcription Fallback System](TRANSCRIPTION_FALLBACK_SYSTEM.md)** - Multi-tier fallback architecture for reliable transcription
+- **[Retry Configuration Reference](RETRY_CONFIG_REFERENCE.md)** - Quick reference for retry settings and rate limit handling
+
+### API Documentation
+- **[YouTube Data API Guide](YOUTUBE_DATA_API.md)** - Comprehensive YouTube Data API usage
+- **[YouTube Data API Quick Reference](YOUTUBE_DATA_API_QUICK_REFERENCE.md)** - Quick reference for common operations
+
+### Troubleshooting
+- **[YouTube Bot Detection Fix](YOUTUBE_BOT_DETECTION_FIX.md)** - Solutions for YouTube bot detection issues
+- **[Fixes Applied](FIXES_APPLIED.md)** - Log of all fixes and improvements
+
+### Additional Resources
+- **[Replit Usage](REPLIT_USAGE.md)** - Deploying on Replit
+- **[Test Video Generation](TEST_VIDEO_GENERATION.md)** - Testing guide
+- **[Why Vosk is Better](why_vosk_is_better.py)** - Explanation of Vosk offline transcription benefits
+
 ## Production Considerations
 
 For production deployment, consider:
@@ -283,20 +303,34 @@ For production deployment, consider:
 
 ## Troubleshooting
 
+### Rate Limiting (429 Errors)
+- **Automatic fallback**: System automatically uses Vosk offline transcription after 2 YouTube retries (9s max wait)
+- **See**: [Transcription Fallback System](TRANSCRIPTION_FALLBACK_SYSTEM.md) for detailed explanation
+- **Quick fix**: Ensure Vosk model exists at `models/vosk-model-small-en-us-0.15/`
+
 ### Video download fails
 - Check YouTube URL is valid
 - Ensure video is publicly accessible
 - Verify network connection
+- **See**: [YouTube Bot Detection Fix](YOUTUBE_BOT_DETECTION_FIX.md) if getting bot detection errors
 
 ### Gemini API errors
-- Verify API key is correct
-- Check API quota/limits
+- Verify API key is correct in `.env` file
+- Check API quota/limits at [Google AI Studio](https://ai.google.dev/)
 - Ensure video format is supported
+- **See**: [Setup Instructions](SETUP_INSTRUCTIONS.md) for API key setup
 
 ### Video processing errors
-- Ensure FFmpeg is installed
-- Check available disk space
+- Ensure FFmpeg is installed: `ffmpeg -version`
+- Check available disk space in `temp/` and `output/` directories
 - Verify video file is not corrupted
+- **See**: [Test Video Generation](TEST_VIDEO_GENERATION.md) for debugging steps
+
+### Vosk Transcription Issues
+- Check if model exists: `ls models/vosk-model-small-en-us-0.15/`
+- Verify Python package installed: `pip show vosk`
+- Test with: `python why_vosk_is_better.py`
+- **See**: [Retry Configuration Reference](RETRY_CONFIG_REFERENCE.md) for testing commands
 
 ## License
 
