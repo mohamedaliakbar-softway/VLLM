@@ -1068,61 +1068,11 @@ function VideoEditor() {
   }, [captions, showCaptionPreview]);
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden">
-      {/* Top Navigation */}
-      <div className="border-b border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <h2 className="text-lg font-semibold text-gray-900">Video Editor</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsLeftPanelVisible(!isLeftPanelVisible)}
-            aria-label={
-              isLeftPanelVisible ? "Hide Copilot panel" : "Show Copilot panel"
-            }
-            className={isLeftPanelVisible ? "" : "bg-gray-100"}
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            disabled={isProcessing || clips.length === 0}
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
-          <Button
-            className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white"
-            onClick={handlePublish}
-            disabled={isProcessing || clips.length === 0}
-          >
-            <Share2 className="h-4 w-4" />
-            Publish
-          </Button>
-        </div>
-      </div>
-
-      <div
-        className="flex-1 grid overflow-hidden transition-all duration-300"
-        style={{
-          gridTemplateColumns: isLeftPanelVisible
-            ? `${chatPanelWidth}px 1fr`
-            : "1fr",
-        }}
-      >
+    <div className="h-screen bg-white flex overflow-hidden">
         {/* Left Panel - Assistant Chat */}
         {isLeftPanelVisible && (
           <aside
-            className="border-r border-gray-200 bg-white flex flex-col overflow-hidden relative"
+          className="h-full border-r border-gray-200 bg-white flex flex-col overflow-hidden relative"
             style={{
               width: `${chatPanelWidth}px`,
               minWidth: "280px",
@@ -1140,18 +1090,11 @@ function VideoEditor() {
               <GripVertical className="h-4 w-4 text-gray-400 pointer-events-none" />
             </div>
 
-            <div className="border-b border-gray-200 p-4 flex items-center justify-between bg-gray-50">
-              <div className="flex items-center gap-3">
-                <Sparkles className="h-4 w-4 text-[#1E201E]" />
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Copilot
-                  </h3>
-                  <span className="text-xs text-gray-500">
-                    {isAiThinking ? "Thinking..." : "Ready to assist"}
-                  </span>
-                </div>
-              </div>
+          {/* Header with Back Button and Expand Icon */}
+          <div className="border-b border-gray-200 px-3 flex items-center justify-between bg-gray-50">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
               <Button variant="ghost" size="icon" onClick={toggleChatExpand}>
                 {isChatExpanded ? (
                   <Minimize className="h-4 w-4" />
@@ -1296,10 +1239,18 @@ function VideoEditor() {
           </aside>
         )}
 
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div
+          className="flex-1 grid overflow-hidden transition-all duration-300"
+          style={{
+            gridTemplateColumns: isRightPanelVisible ? "1fr 350px" : "1fr",
+          }}
+        >
         {/* Center Panel - Video Preview (Fixed Size) */}
         <main className="flex flex-col bg-white p-6 overflow-hidden">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="relative w-[360px] h-[640px] bg-black rounded-3xl overflow-hidden shadow-2xl">
+          <div className="flex-1 flex items-center justify-center min-h-0">
+            <div className="relative w-[360px] h-[480px] bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
                 // Loading animation with strike-through list
                 <div className="relative w-full h-full rounded-3xl overflow-hidden">
@@ -1616,7 +1567,7 @@ function VideoEditor() {
 
             {/* Time Ruler */}
             {!isProcessing && clips.length > 0 && selectedClip && (
-              <div className="relative h-10 bg-gray-200 rounded-lg mb-4 overflow-hidden">
+              <div className="relative h-10 bg-gray-200 rounded-lg overflow-hidden">
                 <div className="flex h-full relative">
                   {Array.from(
                     { length: Math.ceil(selectedClip.duration / 5) + 1 },
@@ -1641,54 +1592,9 @@ function VideoEditor() {
                 </div>
               </div>
             )}
-
-            <ScrollArea className="w-full flex-1 min-h-0">
-              <div className="flex gap-3 pb-2">
-                {isProcessing ? (
-                  <div className="w-full text-center py-8 text-gray-500">
-                    <p>Generating clips...</p>
-                  </div>
-                ) : (
-                  <>
-                    {clips.length > 0 ? (
-                      clips.map((clip, idx) => (
-                        <Card
-                          key={clip.id}
-                          className={cn(
-                            "min-w-[200px] cursor-pointer transition-all",
-                            idx === selectedClipIndex
-                              ? "border-[#1E201E] border-2 bg-[#1E201E]/5 shadow-md"
-                              : "border-gray-200 hover:border-gray-300",
-                          )}
-                          onClick={() => setSelectedClipIndex(idx)}
-                        >
-                          <CardContent className="p-4">
-                            <div className="text-xs font-bold text-[#1E201E] mb-2">
-                              #{idx + 1}
-                            </div>
-                            <div className="text-sm font-semibold text-gray-900 mb-1 truncate">
-                              {clip.title}
-                            </div>
-                            <div className="text-xs text-[#1E201E] font-semibold mb-1">
-                              {clip.duration}s
-                            </div>
-                            <div className="text-xs text-gray-500 font-mono">
-                              {clip.startTime} - {clip.endTime}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    ) : (
-                      <div className="w-full text-center py-8 text-gray-500">
-                        <p>No clips yet</p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </ScrollArea>
           </div>
         </main>
+            </div>
       </div>
 
       {/* Publish Modal */}
