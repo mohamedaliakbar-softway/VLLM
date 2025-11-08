@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # YouTube Cookies (for bypassing bot detection)
     youtube_cookies_file: Optional[str] = None  # Path to cookies.txt file (optional)
-    youtube_use_browser_cookies: bool = True  # Use browser cookies (Chrome/Firefox/Safari)
+    youtube_use_browser_cookies: bool = False  # Use browser cookies (disabled in server environment)
     youtube_browser: str = "chrome"  # Browser to use: chrome, firefox, safari, edge, opera
     
     # Server

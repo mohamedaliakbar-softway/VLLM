@@ -115,6 +115,13 @@ Other settings are configured in `config.py` with sensible defaults:
 7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **CRITICAL BUG FIX - Chrome Cookies Error Resolved**
+  - **Fixed YouTube download issue**: Disabled browser cookies in server environment
+  - **Root cause**: yt-dlp was trying to load Chrome cookies, but Chrome isn't installed in Replit
+  - **Solution**: Changed `youtube_use_browser_cookies` from `True` to `False` in config.py
+  - **Impact**: YouTube video processing now works without browser cookie errors
+  - **Note**: Cookies can still be manually provided via `youtube_cookies_file` if needed for bot detection
+
 - November 8, 2025: **CRITICAL BUG FIX - MoviePy Import Resolved & Authentication Removed**
   - **Fixed MoviePy import**: Updated all imports from `moviepy.editor` to `moviepy` for compatibility with MoviePy 2.x
   - **Updated services**: Fixed imports in `video_clipper.py` and `smart_cropper.py`
