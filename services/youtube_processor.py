@@ -154,23 +154,39 @@ class YouTubeProcessor:
                 
                 # Get transcript/subtitles
                 transcript_text = ""
-                subtitles = info.get('subtitles', {}) or info.get('automatic_captions', {})
+                human_subs = info.get('subtitles', {}) or {}
+                auto_subs = info.get('automatic_captions', {}) or {}
                 
-                # Try multiple English variants
-                subtitle_key = None
+                # Prefer human subtitles; fall back to automatic captions
+                tracks = None
+                chosen_lang = None
                 for lang in ['en', 'en-US', 'en-GB', 'en-AU']:
-                    if lang in subtitles:
-                        subtitle_key = lang
+                    if lang in human_subs and human_subs[lang]:
+                        tracks = human_subs[lang]
+                        chosen_lang = lang
+                        break
+                    if lang in auto_subs and auto_subs[lang]:
+                        tracks = auto_subs[lang]
+                        chosen_lang = lang
                         break
                 
-                if subtitle_key:
-                    # Download subtitle content
-                    subtitle_url = subtitles[subtitle_key][0]['url']
+                if tracks:
+                    # Prefer VTT, then JSON3/SRV3, then TTML/SRV1/SRV2, else first available
+                    preferred = None
+                    for ext in ['vtt', 'json3', 'srv3', 'ttml', 'srv1', 'srv2']:
+                        for t in tracks:
+                            if t.get('ext') == ext:
+                                preferred = t
+                                break
+                        if preferred:
+                            break
+                    if not preferred:
+                        preferred = tracks[0]
+                    subtitle_url = preferred.get('url')
                     import requests
-                    response = requests.get(subtitle_url)
-                    
-                    # Parse VTT or JSON subtitle format
-                    transcript_text = self._parse_subtitles(response.text)
+                    resp = requests.get(subtitle_url)
+                    resp.raise_for_status()
+                    transcript_text = self._parse_subtitles(resp.text)
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
@@ -275,20 +291,43 @@ class YouTubeProcessor:
             raise
     
     def _parse_subtitles(self, subtitle_content: str) -> str:
-        """Parse VTT or JSON subtitle format and extract plain text."""
+        """Parse VTT, JSON (YouTube json3), or XML/TTML subtitle formats and extract plain text."""
         import re
+        import html as _html
         
-        # Remove WebVTT headers
-        content = re.sub(r'WEBVTT\n.*?\n\n', '', subtitle_content, flags=re.DOTALL)
+        # Try JSON first (YouTube json3 format)
+        try:
+            data = json.loads(subtitle_content)
+            texts = []
+            events = data.get('events', []) if isinstance(data, dict) else []
+            for ev in events:
+                segs = ev.get('segs', []) or []
+                for s in segs:
+                    t = s.get('utf8', '')
+                    if t and t.strip():
+                        texts.append(t)
+            if texts:
+                joined = ' '.join(texts)
+                return _html.unescape(re.sub(r'\s+', ' ', joined)).strip()
+        except Exception:
+            pass
         
-        # Remove timestamps (00:00:00.000 --> 00:00:03.000)
-        content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', content)
+        content = subtitle_content
+        
+        # Detect and strip WebVTT header if present
+        content = re.sub(r'^WEBVTT.*?\n\n', '', content, flags=re.DOTALL | re.MULTILINE)
+        
+        # Remove timestamps supporting HH:MM:SS.mmm or MM:SS.mmm ranges
+        content = re.sub(r'(?:\d{2}:)?\d{2}:\d{2}\.\d{3}\s*-->\s*(?:\d{2}:)?\d{2}:\d{2}\.\d{3}.*?\n', '', content)
         
         # Remove cue identifiers (numbers at start of lines)
-        content = re.sub(r'^\d+\n', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^\d+\s*$\n?', '', content, flags=re.MULTILINE)
         
-        # Remove alignment tags and formatting
+        # Remove alignment tags and formatting (works for HTML/TTML/XML)
         content = re.sub(r'<[^>]+>', '', content)
+        
+        # HTML entities to text
+        content = _html.unescape(content)
         
         # Clean up extra whitespace and newlines
         content = re.sub(r'\n+', ' ', content)
