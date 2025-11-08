@@ -95,7 +95,7 @@ class SmartCropper:
 
         # If aspect ratios match, just resize
         if abs(original_aspect - target_aspect) < 0.01:
-            return clip.resized(new_size=(target_width, target_height), resample='lanczos')
+            return clip.resized(new_size=(target_width, target_height))
 
         # Determine crop dimensions
         if original_aspect > target_aspect:
@@ -243,7 +243,7 @@ class SmartCropper:
         cropped_clip = clip.transform(crop_frame_function)
         
         # Resize to target size
-        final_clip = cropped_clip.resized(new_size=target_size, resample='lanczos')
+        final_clip = cropped_clip.resized(new_size=target_size)
         
         logger.info("\u2705 Intelligent framing complete!")
         return final_clip
@@ -652,7 +652,7 @@ class SmartCropper:
                                    y1=avg_y,
                                    x2=avg_x + crop_width,
                                    y2=avg_y + crop_height)
-            resized = cropped.resized(new_size=(target_width, target_height), resample='lanczos')
+            resized = cropped.resized(new_size=(target_width, target_height))
 
             logger.info(
                 f"✅ Crop applied successfully, resized to {target_width}x{target_height}"
@@ -664,7 +664,7 @@ class SmartCropper:
             logger.warning(f"Falling back to simple resize without cropping")
             # Fallback: just resize without cropping
             try:
-                return clip.resized(new_size=(target_width, target_height), resample='lanczos')
+                return clip.resized(new_size=(target_width, target_height))
             except Exception as e2:
                 logger.error(f"Resize fallback also failed: {e2}")
                 raise Exception(f"Crop and resize both failed: {e}, {e2}")
