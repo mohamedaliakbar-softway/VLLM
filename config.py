@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # YouTube Data API
     youtube_api_key: Optional[str] = None  # Optional - for YouTube Data API features
     
+    # YouTube Cookies (for bypassing bot detection)
+    youtube_cookies_file: Optional[str] = None  # Path to cookies.txt file (optional)
+    youtube_use_browser_cookies: bool = True  # Use browser cookies (Chrome/Firefox/Safari)
+    youtube_browser: str = "chrome"  # Browser to use: chrome, firefox, safari, edge, opera
+    
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
