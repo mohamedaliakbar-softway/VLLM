@@ -10,9 +10,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/editor" element={<Editor />} />
+        <Route path="/editor" element={<VideoEditor />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/video-editor" element={<VideoEditor />} />
       </Routes>
     </Router>
   );

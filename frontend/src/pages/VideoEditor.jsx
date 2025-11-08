@@ -1,46 +1,156 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
-  Play, Pause, SkipBack, Download, Share2, ArrowLeft,
-  MessageSquare, Send, Plus, ChevronUp, ChevronDown, SkipForward, SkipBackIcon
+  Play, Pause, Download, Share2, ArrowLeft,
+  MessageSquare, Send, Plus, ChevronUp, ChevronDown, SkipForward, SkipBackIcon,
+  Loader2
 } from 'lucide-react';
+import axios from 'axios';
+import { extractVideoId, getThumbnailUrl } from '../utils/youtube';
 
 function VideoEditor() {
   const navigate = useNavigate();
   const location = useLocation();
   const videoRef = useRef(null);
   
+  const youtubeUrl = location.state?.youtubeUrl;
+  const videoId = extractVideoId(youtubeUrl);
+  const thumbnailUrl = getThumbnailUrl(videoId);
+
+  // Processing states
+  const [isProcessing, setIsProcessing] = useState(true);
+  const [processingStatus, setProcessingStatus] = useState('Analyzing video...');
+  const [error, setError] = useState('');
+  const [shorts, setShorts] = useState([]);
+
+  // Video playback states
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(30);
   const [selectedClipIndex, setSelectedClipIndex] = useState(0);
+  
+  // Chat states
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([
-    { role: 'assistant', content: 'You are a helpful editor assistant.' }
+    { role: 'assistant', content: 'Hello! I\'m analyzing your video and will generate highlights shortly.' }
   ]);
 
-  // Mock clips data (will be replaced with actual data from backend)
-  const [clips, setClips] = useState([
-    { id: 1, title: 'Epic Highlight Moment', startTime: '00:02:34', endTime: '00:02:58', duration: 24 },
-    { id: 2, title: 'Key Action Sequence', startTime: '00:05:12', endTime: '00:05:42', duration: 30 },
-    { id: 3, title: 'Emotional Peak', startTime: '00:08:45', endTime: '00:09:00', duration: 15 },
-    { id: 4, title: 'Grand Finale', startTime: '00:12:20', endTime: '00:12:50', duration: 30 }
-  ]);
-
+  // Clips data
+  const [clips, setClips] = useState([]);
   const selectedClip = clips[selectedClipIndex];
-  const [clipTitle, setClipTitle] = useState(selectedClip.title);
-  const [clipDuration, setClipDuration] = useState(selectedClip.duration);
+  const [clipTitle, setClipTitle] = useState(selectedClip?.title || '');
+  const [clipDuration, setClipDuration] = useState(selectedClip?.duration || 30);
 
-  // Sync properties panel with selected clip when selection changes
+  // Redirect if no YouTube URL
+  useEffect(() => {
+    if (!youtubeUrl) {
+      navigate('/');
+    }
+  }, [youtubeUrl, navigate]);
+
+  // Trigger video processing on mount
+  useEffect(() => {
+    if (!youtubeUrl) return;
+
+    const processVideo = async () => {
+      try {
+        setProcessingStatus('Extracting transcript...');
+        
+        const response = await axios.post('/api/v1/generate-shorts', {
+          youtube_url: youtubeUrl,
+          max_shorts: 3,
+        });
+
+        setProcessingStatus('AI analyzing highlights...');
+        
+        // Poll for results
+        const jobId = response.data.job_id;
+        pollJobStatus(jobId);
+        
+      } catch (err) {
+        setError(err.response?.data?.detail || 'Failed to process video');
+        setIsProcessing(false);
+        setChatHistory(prev => [...prev, { 
+          role: 'assistant', 
+          content: `Error: ${err.response?.data?.detail || 'Failed to process video'}` 
+        }]);
+      }
+    };
+
+    processVideo();
+  }, [youtubeUrl]);
+
+  const pollJobStatus = async (jobId) => {
+    const maxAttempts = 60; // 1 minute timeout
+    let attempts = 0;
+
+    const poll = setInterval(async () => {
+      try {
+        attempts++;
+        
+        const response = await axios.get(`/api/v1/job/${jobId}`);
+        const { status, shorts: generatedShorts, progress } = response.data;
+
+        if (progress) {
+          setProcessingStatus(progress);
+        }
+
+        if (status === 'completed' && generatedShorts && generatedShorts.length > 0) {
+          clearInterval(poll);
+          setShorts(generatedShorts);
+          
+          // Convert shorts to clips format
+          const newClips = generatedShorts.map((short, idx) => ({
+            id: idx + 1,
+            title: short.title || `Highlight ${idx + 1}`,
+            startTime: formatTime(short.start_time),
+            endTime: formatTime(short.end_time),
+            duration: short.duration || 30,
+            filename: short.filename,
+            url: `/api/v1/download/${short.filename}`
+          }));
+          
+          setClips(newClips);
+          setIsProcessing(false);
+          setChatHistory(prev => [...prev, { 
+            role: 'assistant', 
+            content: `✅ Generated ${generatedShorts.length} video highlights! Click any clip to preview.` 
+          }]);
+        } else if (status === 'failed') {
+          clearInterval(poll);
+          setError('Video processing failed');
+          setIsProcessing(false);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(poll);
+          setError('Processing timeout - please try again');
+          setIsProcessing(false);
+        }
+      } catch (err) {
+        clearInterval(poll);
+        setError('Failed to check processing status');
+        setIsProcessing(false);
+      }
+    }, 1000);
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `00:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  // Sync properties panel with selected clip
   useEffect(() => {
     if (selectedClip) {
       setClipTitle(selectedClip.title);
       setClipDuration(selectedClip.duration);
     }
-  }, [selectedClipIndex]);
+  }, [selectedClipIndex, selectedClip]);
 
   // Update clip in array when title or duration changes
   useEffect(() => {
+    if (!selectedClip) return;
+    
     const newClips = [...clips];
     if (newClips[selectedClipIndex]) {
       newClips[selectedClipIndex] = {
@@ -126,17 +236,17 @@ function VideoEditor() {
     <div className="editor-new-container">
       {/* Top Navigation */}
       <div className="editor-nav">
-        <button className="back-btn" onClick={() => navigate('/dashboard')}>
+        <button className="back-btn" onClick={() => navigate('/')}>
           <ArrowLeft size={20} />
           Back
         </button>
         <h2 className="editor-title">Video Editor</h2>
         <div className="editor-actions">
-          <button className="action-btn">
+          <button className="action-btn" disabled={isProcessing}>
             <Download size={18} />
             Export
           </button>
-          <button className="action-btn primary">
+          <button className="action-btn primary" disabled={isProcessing}>
             <Share2 size={18} />
             Publish
           </button>
@@ -183,12 +293,13 @@ function VideoEditor() {
           <form className="chat-input-form" onSubmit={handleSendMessage}>
             <input
               type="text"
-              placeholder="Analyze this video: tuefn"
+              placeholder="Ask me anything..."
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
               className="chat-input"
+              disabled={isProcessing}
             />
-            <button type="submit" className="chat-send-btn">
+            <button type="submit" className="chat-send-btn" disabled={isProcessing}>
               <Send size={18} />
             </button>
           </form>
@@ -197,19 +308,45 @@ function VideoEditor() {
         {/* Center Panel - Video Preview */}
         <main className="preview-panel">
           <div className="video-container">
-            <video
-              ref={videoRef}
-              className="video-player-new"
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleLoadedMetadata}
-              src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-            />
-            <div className="video-overlay">
-              <button className="play-overlay-btn" onClick={handlePlayPause}>
-                {isPlaying ? <Pause size={48} /> : <Play size={48} />}
-              </button>
-            </div>
-            <div className="clip-label">Clip #{selectedClipIndex + 1}</div>
+            {isProcessing ? (
+              // Show blurred thumbnail while processing
+              <div className="preview-loading">
+                <img 
+                  src={thumbnailUrl} 
+                  alt="Video thumbnail" 
+                  className="blurred-thumbnail"
+                />
+                <div className="loading-overlay">
+                  <Loader2 size={64} className="spinner-icon" />
+                  <p className="loading-text">{processingStatus}</p>
+                  <div className="loading-bar">
+                    <div className="loading-bar-fill"></div>
+                  </div>
+                </div>
+              </div>
+            ) : clips.length > 0 && selectedClip?.url ? (
+              // Show video player when ready
+              <>
+                <video
+                  ref={videoRef}
+                  className="video-player-new"
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  src={selectedClip.url}
+                  key={selectedClip.url}
+                />
+                <div className="video-overlay">
+                  <button className="play-overlay-btn" onClick={handlePlayPause}>
+                    {isPlaying ? <Pause size={48} /> : <Play size={48} />}
+                  </button>
+                </div>
+                <div className="clip-label">Clip #{selectedClipIndex + 1}</div>
+              </>
+            ) : (
+              <div className="preview-error">
+                <p>{error || 'No video available'}</p>
+              </div>
+            )}
           </div>
 
           {/* Timeline Section */}
@@ -217,15 +354,23 @@ function VideoEditor() {
             <div className="timeline-header">
               <h4>Timeline</h4>
               <div className="timeline-controls">
-                <button className="timeline-btn" onClick={addClip}>
+                <button className="timeline-btn" onClick={addClip} disabled={isProcessing}>
                   <Plus size={16} />
                   Add Clip
                 </button>
-                <button className="timeline-btn" onClick={() => moveClip(-1)} disabled={selectedClipIndex === 0}>
+                <button 
+                  className="timeline-btn" 
+                  onClick={() => moveClip(-1)} 
+                  disabled={selectedClipIndex === 0 || isProcessing}
+                >
                   <ChevronUp size={16} />
                   Move Up
                 </button>
-                <button className="timeline-btn" onClick={() => moveClip(1)} disabled={selectedClipIndex === clips.length - 1}>
+                <button 
+                  className="timeline-btn" 
+                  onClick={() => moveClip(1)} 
+                  disabled={selectedClipIndex === clips.length - 1 || isProcessing}
+                >
                   <ChevronDown size={16} />
                   Move Down
                 </button>
@@ -233,15 +378,25 @@ function VideoEditor() {
             </div>
 
             <div className="clips-timeline">
-              {clips.map((clip, idx) => (
-                <div
-                  key={clip.id}
-                  className={`clip-item ${idx === selectedClipIndex ? 'selected' : ''}`}
-                  onClick={() => setSelectedClipIndex(idx)}
-                >
-                  <div className="clip-name">{clip.title}</div>
+              {isProcessing ? (
+                <div className="timeline-loading">
+                  <p>Generating clips...</p>
                 </div>
-              ))}
+              ) : clips.length > 0 ? (
+                clips.map((clip, idx) => (
+                  <div
+                    key={clip.id}
+                    className={`clip-item ${idx === selectedClipIndex ? 'selected' : ''}`}
+                    onClick={() => setSelectedClipIndex(idx)}
+                  >
+                    <div className="clip-name">{clip.title}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="timeline-empty">
+                  <p>No clips yet</p>
+                </div>
+              )}
             </div>
           </div>
         </main>
@@ -253,97 +408,108 @@ function VideoEditor() {
             <p>Edit selected clip</p>
           </div>
 
-          <div className="properties-content">
-            <div className="property-group">
-              <label>Title</label>
-              <input
-                type="text"
-                value={clipTitle}
-                onChange={(e) => setClipTitle(e.target.value)}
-                className="property-input"
-              />
-            </div>
-
-            <div className="property-group">
-              <label>Time Range</label>
-              <div className="time-range-inputs">
+          {selectedClip ? (
+            <div className="properties-content">
+              <div className="property-group">
+                <label>Title</label>
                 <input
                   type="text"
-                  value={selectedClip.startTime}
-                  readOnly
-                  className="time-input"
-                />
-                <input
-                  type="text"
-                  value={selectedClip.endTime}
-                  readOnly
-                  className="time-input"
+                  value={clipTitle}
+                  onChange={(e) => setClipTitle(e.target.value)}
+                  className="property-input"
+                  disabled={isProcessing}
                 />
               </div>
-            </div>
 
-            <div className="property-group">
-              <label>Duration</label>
-              <div className="duration-slider">
-                <input
-                  type="range"
-                  min="15"
-                  max="60"
-                  value={clipDuration}
-                  onChange={(e) => setClipDuration(parseInt(e.target.value))}
-                  className="slider"
-                />
-                <span className="duration-value">{clipDuration}s</span>
+              <div className="property-group">
+                <label>Time Range</label>
+                <div className="time-range-inputs">
+                  <input
+                    type="text"
+                    value={selectedClip.startTime}
+                    readOnly
+                    className="time-input"
+                  />
+                  <input
+                    type="text"
+                    value={selectedClip.endTime}
+                    readOnly
+                    className="time-input"
+                  />
+                </div>
               </div>
-              <div className="duration-presets">
-                <button 
-                  className={clipDuration === 15 ? 'active' : ''}
-                  onClick={() => setClipDuration(15)}
-                >
-                  15s
-                </button>
-                <button 
-                  className={clipDuration === 30 ? 'active' : ''}
-                  onClick={() => setClipDuration(30)}
-                >
-                  30s
-                </button>
-                <button 
-                  className={clipDuration === 60 ? 'active' : ''}
-                  onClick={() => setClipDuration(60)}
-                >
-                  60s
-                </button>
-              </div>
-            </div>
 
-            <div className="property-group">
-              <label>Trim</label>
-              <div className="trim-controls">
-                <button className="trim-btn">
-                  <SkipBackIcon size={16} />
-                  Trim Start
-                </button>
-                <button className="trim-btn">
-                  Trim End
-                  <SkipForward size={16} />
-                </button>
+              <div className="property-group">
+                <label>Duration</label>
+                <div className="duration-slider">
+                  <input
+                    type="range"
+                    min="15"
+                    max="60"
+                    value={clipDuration}
+                    onChange={(e) => setClipDuration(parseInt(e.target.value))}
+                    className="slider"
+                    disabled={isProcessing}
+                  />
+                  <span className="duration-value">{clipDuration}s</span>
+                </div>
+                <div className="duration-presets">
+                  <button 
+                    className={clipDuration === 15 ? 'active' : ''}
+                    onClick={() => setClipDuration(15)}
+                    disabled={isProcessing}
+                  >
+                    15s
+                  </button>
+                  <button 
+                    className={clipDuration === 30 ? 'active' : ''}
+                    onClick={() => setClipDuration(30)}
+                    disabled={isProcessing}
+                  >
+                    30s
+                  </button>
+                  <button 
+                    className={clipDuration === 60 ? 'active' : ''}
+                    onClick={() => setClipDuration(60)}
+                    disabled={isProcessing}
+                  >
+                    60s
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="property-group">
-              <label>Order</label>
-              <div className="order-display">
-                <input
-                  type="number"
-                  value={selectedClipIndex + 1}
-                  readOnly
-                  className="order-input"
-                />
-                <span>of {clips.length}</span>
+              <div className="property-group">
+                <label>Trim</label>
+                <div className="trim-controls">
+                  <button className="trim-btn" disabled={isProcessing}>
+                    <SkipBackIcon size={16} />
+                    Trim Start
+                  </button>
+                  <button className="trim-btn" disabled={isProcessing}>
+                    Trim End
+                    <SkipForward size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="property-group">
+                <label>Order</label>
+                <div className="order-display">
+                  <input
+                    type="number"
+                    value={selectedClipIndex + 1}
+                    readOnly
+                    className="order-input"
+                  />
+                  <span>of {clips.length}</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="properties-empty">
+              <p>{isProcessing ? 'Processing video...' : 'No clip selected'}</p>
+            </div>
+          )}
         </aside>
       </div>
     </div>
