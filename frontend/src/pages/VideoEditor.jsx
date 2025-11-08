@@ -69,6 +69,32 @@ function VideoEditor() {
   const [isResizing, setIsResizing] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
 
+  // Caption states
+  const [captions, setCaptions] = useState(null);
+  const [selectedCaptionStyle, setSelectedCaptionStyle] = useState('bold_modern');
+  const [showCaptionPreview, setShowCaptionPreview] = useState(false);
+  const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+  const [currentCaption, setCurrentCaption] = useState('');
+
+  // Available caption styles
+  const CAPTION_STYLES = {
+    bold_modern: {
+      name: "Bold & Modern",
+      preview: "💪 HELLO WORLD",
+      description: "Bold text with strong contrast"
+    },
+    elegant_serif: {
+      name: "Elegant Serif",
+      preview: "✨ Hello World",
+      description: "Sophisticated serif font"
+    },
+    fun_playful: {
+      name: "Fun & Playful",
+      preview: "🎉 HELLO WORLD!",
+      description: "Colorful and energetic"
+    }
+  };
+
   // Panel visibility states (collapsible panels)
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
   const [isRightPanelVisible, setIsRightPanelVisible] = useState(true);
@@ -409,17 +435,33 @@ function VideoEditor() {
       // Remove thinking message
       setChatHistory(prev => prev.filter(msg => !msg.isThinking));
 
-      // Execute the action based on AI response
-      if (action && parameters) {
-        await executeAiAction(action, parameters, updatedClips);
-      }
-
-      // Add AI response to chat
+      // IMMEDIATELY show AI's conversational reply (Copilot-like)
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: aiMessage || 'Done! Let me know if you need anything else.',
+        content: aiMessage || 'Got it! Working on that...',
         timestamp: new Date().toISOString()
       }]);
+
+      // THEN execute the action in the background
+      if (action && parameters) {
+        // Show what action is being performed
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: `🔄 Executing: ${action}...`,
+          timestamp: new Date().toISOString(),
+          isExecuting: true
+        }]);
+
+        await executeAiAction(action, parameters, updatedClips);
+
+        // Remove executing message and show completion
+        setChatHistory(prev => prev.filter(msg => !msg.isExecuting));
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: '✅ Done! Anything else I can help with?',
+          timestamp: new Date().toISOString()
+        }]);
+      }
 
     } catch (error) {
       // Remove thinking message
@@ -506,6 +548,16 @@ function VideoEditor() {
         if (updatedClips && Array.isArray(updatedClips)) {
           setClips(updatedClips);
         }
+        break;
+
+      case 'generate_captions':
+        await generateCaptions();
+        break;
+
+      case 'apply_caption_style':
+        const style = parameters.style || 'bold_modern';
+        setSelectedCaptionStyle(style);
+        await applyCaptionStyle(style);
         break;
 
       default:
@@ -677,6 +729,202 @@ function VideoEditor() {
     }]);
   };
 
+  // Caption generation functions
+  const generateCaptions = async () => {
+    if (!selectedClip) return;
+    
+    setIsGeneratingCaptions(true);
+    
+    try {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '🎤 Generating captions from audio... This may take a minute.',
+        timestamp: new Date().toISOString()
+      }]);
+
+      // Start caption generation
+      const response = await axios.post(
+        `/api/v1/clips/${selectedClip.id}/generate-captions`
+      );
+      
+      const jobId = response.data.job_id;
+      
+      // Poll for completion
+      pollCaptionJob(jobId);
+      
+    } catch (error) {
+      console.error('Caption generation failed:', error);
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Failed to generate captions: ${error.message}`,
+        timestamp: new Date().toISOString()
+      }]);
+      setIsGeneratingCaptions(false);
+    }
+  };
+
+  const pollCaptionJob = (jobId) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(`/api/v1/job/${jobId}`);
+        const { status, progress } = response.data;
+        
+        setProcessingStatus(`Generating captions... ${progress}%`);
+        
+        if (status === 'completed') {
+          clearInterval(pollInterval);
+          
+          // Fetch captions
+          const captionsResponse = await axios.get(
+            `/api/v1/clips/${selectedClip.id}/captions`
+          );
+          
+          setCaptions(captionsResponse.data.captions);
+          setShowCaptionPreview(true);
+          setIsGeneratingCaptions(false);
+          
+          setChatHistory(prev => [...prev, {
+            role: 'assistant',
+            content: '✅ Captions generated! Choose a style and preview below.',
+            timestamp: new Date().toISOString()
+          }]);
+          
+        } else if (status === 'failed') {
+          clearInterval(pollInterval);
+          setIsGeneratingCaptions(false);
+          setChatHistory(prev => [...prev, {
+            role: 'assistant',
+            content: '❌ Caption generation failed. Please try again.',
+            timestamp: new Date().toISOString()
+          }]);
+        }
+      } catch (error) {
+        clearInterval(pollInterval);
+        setIsGeneratingCaptions(false);
+        console.error('Caption poll error:', error);
+      }
+    }, 2000);
+  };
+
+  const applyCaptionStyle = async (styleName) => {
+    if (!captions) {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '⚠️ Please generate captions first.',
+        timestamp: new Date().toISOString()
+      }]);
+      return;
+    }
+    
+    setIsProcessing(true);
+    setProcessingStatus('Applying caption style...');
+    
+    try {
+      const response = await axios.post(
+        `/api/v1/clips/${selectedClip.id}/apply-captions`,
+        null,
+        { params: { style_name: styleName } }
+      );
+      
+      const jobId = response.data.job_id;
+      
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `🎨 Applying ${CAPTION_STYLES[styleName].name} style to video...`,
+        timestamp: new Date().toISOString()
+      }]);
+      
+      // Poll for completion
+      pollCaptionBurnJob(jobId);
+      
+    } catch (error) {
+      console.error('Apply captions failed:', error);
+      setIsProcessing(false);
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Failed to apply captions: ${error.message}`,
+        timestamp: new Date().toISOString()
+      }]);
+    }
+  };
+
+  const pollCaptionBurnJob = (jobId) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(`/api/v1/job/${jobId}`);
+        const { status, progress, result } = response.data;
+        
+        setProcessingStatus(`Burning captions into video... ${progress}%`);
+        setProcessingProgress(progress);
+        
+        if (status === 'completed') {
+          clearInterval(pollInterval);
+          
+          // Update clip with new file
+          const updatedClips = [...clips];
+          updatedClips[selectedClipIndex] = {
+            ...updatedClips[selectedClipIndex],
+            url: result.new_file_path,
+            hasCaptions: true
+          };
+          setClips(updatedClips);
+          
+          // Reload video
+          if (videoRef.current) {
+            videoRef.current.load();
+          }
+          
+          setChatHistory(prev => [...prev, {
+            role: 'assistant',
+            content: '✅ Captions applied successfully! Check the preview.',
+            timestamp: new Date().toISOString()
+          }]);
+          
+          setIsProcessing(false);
+          setProcessingProgress(0);
+          
+        } else if (status === 'failed') {
+          clearInterval(pollInterval);
+          setIsProcessing(false);
+          setProcessingProgress(0);
+          setChatHistory(prev => [...prev, {
+            role: 'assistant',
+            content: '❌ Caption burning failed. Please try again.',
+            timestamp: new Date().toISOString()
+          }]);
+        }
+      } catch (error) {
+        clearInterval(pollInterval);
+        setIsProcessing(false);
+        setProcessingProgress(0);
+        console.error('Caption burn poll error:', error);
+      }
+    }, 2000);
+  };
+
+  // Update current caption word based on video time (for preview)
+  useEffect(() => {
+    if (!captions || !showCaptionPreview || !captions.words) return;
+    
+    const updateCaption = () => {
+      const time = videoRef.current?.currentTime || 0;
+      
+      // Find current word
+      const currentWord = captions.words.find(
+        word => time >= word.start && time <= word.end
+      );
+      
+      if (currentWord) {
+        setCurrentCaption(currentWord.word);
+      } else {
+        setCurrentCaption('');
+      }
+    };
+    
+    const interval = setInterval(updateCaption, 100);
+    return () => clearInterval(interval);
+  }, [captions, showCaptionPreview]);
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Top Navigation */}
@@ -806,7 +1054,11 @@ function VideoEditor() {
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-700 leading-relaxed">
+                      <div className={cn(
+                        "text-sm text-gray-700 leading-relaxed",
+                        msg.isThinking && "animate-pulse text-gray-500 italic",
+                        msg.isExecuting && "text-blue-600 font-medium"
+                      )}>
                         {msg.content}
                       </div>
                     </div>
@@ -905,6 +1157,13 @@ function VideoEditor() {
                     <div className="absolute top-5 left-5 px-3 py-1.5 bg-black/60 backdrop-blur-md text-white rounded-xl text-sm font-semibold border border-white/20">
                       Clip #{selectedClipIndex + 1}
                     </div>
+                    
+                    {/* Live Caption Preview Overlay */}
+                    {showCaptionPreview && currentCaption && (
+                      <div className={`caption-overlay caption-style-${selectedCaptionStyle}`}>
+                        {currentCaption}
+                      </div>
+                    )}
                     
                     {/* Video Controls */}
                     <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent backdrop-blur-sm opacity-0 hover:opacity-100 transition-opacity rounded-b-3xl">
