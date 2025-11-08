@@ -1711,7 +1711,7 @@ function VideoEditor() {
         {/* Center Panel - Video Preview (Fixed Size) */}
         <main className="flex flex-col bg-white p-6 overflow-hidden">
           <div className="flex-1 flex items-center justify-center min-h-0">
-            <div className="relative w-[360px] aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
+            <div className="relative w-[640px] aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl" style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
                 // Loading animation with strike-through list
                 <div className="relative w-full h-full rounded-3xl overflow-hidden">
