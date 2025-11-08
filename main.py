@@ -1,6 +1,6 @@
 """FastAPI application for Video Shorts Generator SaaS."""
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional
@@ -317,17 +317,61 @@ async def generate_shorts(
 
 
 @app.get("/api/v1/download/{filename}")
-async def download_short(filename: str):
-    """Download a generated short video."""
+async def download_short(filename: str, request: Request):
+    """Download a generated short video with Range request support for video streaming."""
     file_path = Path(settings.output_dir) / filename
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Get file size
+    file_size = file_path.stat().st_size
+    
+    # Check if Range header is present (required for HTML5 video streaming)
+    range_header = request.headers.get('range')
+    
+    if range_header:
+        # Parse range header (format: "bytes=start-end")
+        try:
+            range_match = range_header.replace('bytes=', '').split('-')
+            start = int(range_match[0]) if range_match[0] else 0
+            end = int(range_match[1]) if range_match[1] else file_size - 1
+            
+            # Ensure valid range
+            start = max(0, start)
+            end = min(end, file_size - 1)
+            content_length = end - start + 1
+            
+            # Read the requested byte range
+            with open(file_path, 'rb') as f:
+                f.seek(start)
+                data = f.read(content_length)
+            
+            # Return 206 Partial Content response
+            return Response(
+                content=data,
+                status_code=206,
+                headers={
+                    'Content-Range': f'bytes {start}-{end}/{file_size}',
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': str(content_length),
+                    'Content-Type': 'video/mp4',
+                },
+                media_type='video/mp4'
+            )
+        except (ValueError, IndexError):
+            # Invalid range header, fall through to full file response
+            pass
+    
+    # Return full file (no range request or invalid range)
     return FileResponse(
         path=str(file_path),
         filename=filename,
-        media_type="video/mp4"
+        media_type="video/mp4",
+        headers={
+            'Accept-Ranges': 'bytes',
+            'Content-Length': str(file_size),
+        }
     )
 
 

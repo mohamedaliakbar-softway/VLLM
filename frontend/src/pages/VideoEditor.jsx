@@ -157,9 +157,31 @@ function VideoEditor() {
     return poll; // Return interval ID for cleanup
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+  const formatTime = (timeInput) => {
+    // Handle both timestamp strings (MM:SS or HH:MM:SS) and seconds (number)
+    let seconds = 0;
+    
+    if (typeof timeInput === 'string') {
+      // Parse timestamp string (e.g., "00:30" or "01:30:45")
+      const parts = timeInput.split(':').map(Number);
+      if (parts.length === 2) {
+        // MM:SS format
+        seconds = parts[0] * 60 + parts[1];
+      } else if (parts.length === 3) {
+        // HH:MM:SS format
+        seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      }
+    } else if (typeof timeInput === 'number') {
+      seconds = timeInput;
+    }
+    
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
     return `00:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
@@ -540,8 +562,20 @@ function VideoEditor() {
                   className="video-player-new"
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
+                  onError={(e) => {
+                    console.error('Video load error:', e);
+                    console.error('Video URL:', selectedClip.url);
+                    console.error('Video element error details:', videoRef.current?.error);
+                    setError(`Failed to load video: ${videoRef.current?.error?.message || 'Unknown error'}`);
+                  }}
+                  onCanPlay={() => {
+                    console.log('Video can play, URL:', selectedClip.url);
+                    setError(''); // Clear any previous errors
+                  }}
                   src={selectedClip.url}
                   key={selectedClip.url}
+                  controls={false}
+                  preload="metadata"
                 >
                   <track kind="captions" srcLang="en" label="English" />
                 </video>
