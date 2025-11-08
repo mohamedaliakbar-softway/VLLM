@@ -44,6 +44,10 @@ class GeminiAnalyzer:
             transcript_length = len(transcript.strip()) if transcript else 0
             if not transcript or transcript_length < 50:
                 logger.warning(f"Transcript too short or empty (length: {transcript_length} chars)")
+                # Always return fallback if transcript is too short
+                if duration >= settings.short_duration_min:
+                    logger.info("Creating fallback highlights (transcript too short)")
+                    return self._create_fallback_highlights(duration, video_title or "")
                 return []
             
             logger.info(f"Analyzing transcript (length: {transcript_length} chars, duration: {duration}s)")
@@ -54,30 +58,57 @@ class GeminiAnalyzer:
             )
             
             # Analyze transcript with Gemini (text-only, super fast)
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.7,
-                    top_p=0.9,
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        top_p=0.9,
+                    )
                 )
-            )
+            except Exception as api_error:
+                logger.error(f"Gemini API error: {str(api_error)}")
+                # Always return fallback if API fails
+                if duration >= settings.short_duration_min:
+                    logger.info("Creating fallback highlights due to API error")
+                    return self._create_fallback_highlights(duration, video_title or "")
+                raise
             
             # Parse the response to extract highlights
             response_text = response.text if response.text else ""
             if not response_text:
                 logger.error("Empty response from Gemini API")
+                # Always return fallback if empty response
+                if duration >= settings.short_duration_min:
+                    logger.info("Creating fallback highlights (empty Gemini response)")
+                    return self._create_fallback_highlights(duration, video_title or "")
                 return []
             
             logger.debug(f"Gemini response preview: {response_text[:300]}...")
             
-            highlights = self._parse_highlights_response(response_text)
+            highlights = self._parse_highlights_response(response_text, duration)
             
             logger.info(f"Found {len(highlights)} highlights from transcript analysis")
+            
+            # ALWAYS ensure we have at least one highlight
+            if not highlights:
+                logger.warning("No highlights found after parsing, creating fallback highlights")
+                if duration >= settings.short_duration_min:
+                    return self._create_fallback_highlights(duration, video_title or "")
+                return []
+            
             return highlights
         
         except Exception as e:
-            logger.error(f"Error analyzing transcript: {str(e)}")
+            logger.error(f"Error analyzing transcript: {str(e)}", exc_info=True)
+            # Always return fallback on error
+            if duration >= settings.short_duration_min:
+                try:
+                    logger.info("Creating fallback highlights due to error")
+                    return self._create_fallback_highlights(duration, video_title or "")
+                except:
+                    pass
             raise
     
     def analyze_video_for_highlights(
@@ -423,6 +454,8 @@ Transcript:
 
 You are an expert video analyst specializing in creating engaging marketing shorts for social media platforms.
 
+CRITICAL REQUIREMENT: You MUST return at least 1 highlight. Even if the transcript is not perfect, find the best segment(s).
+
 Based on the transcript above, identify the MOST ENGAGING and MARKETING-EFFECTIVE segments that would:
 1. Capture attention immediately (hook viewers in first 3 seconds)
 2. Showcase key product features, benefits, or value propositions
@@ -432,13 +465,15 @@ Based on the transcript above, identify the MOST ENGAGING and MARKETING-EFFECTIV
 Analyze the transcript and identify up to 3 best highlight segments. For each segment, provide:
 - Start time (in MM:SS format, estimated from the transcript flow)
 - End time (in MM:SS format)
-- Duration (should be 15-30 seconds)
+- Duration (should be 15-30 seconds, but we will adjust if needed)
 - Engagement score (1-10, where 10 is most engaging)
 - Why this segment is effective for marketing
 - Key elements that make it engaging
 - Suggested call-to-action
 - Category: "podcast" (person speaking/interview) or "product_demo" (screen recording/product)
 - Tracking focus: What should be centered in the frame
+
+IMPORTANT: If you cannot find specific highlights, use the beginning of the video (00:00 to 00:30) as a highlight.
 
 Format your response as JSON with this structure:
 {{
@@ -457,7 +492,7 @@ Format your response as JSON with this structure:
   ]
 }}
 
-Return ONLY valid JSON, no additional text.
+CRITICAL: You MUST return at least 1 highlight in the highlights array. Return ONLY valid JSON, no additional text.
 """
         return base_prompt
     
@@ -577,7 +612,7 @@ Return ONLY valid JSON, no additional text.
         
         return base_prompt
     
-    def _parse_highlights_response(self, response_text: str) -> List[Dict]:
+    def _parse_highlights_response(self, response_text: str, video_duration: int = 0) -> List[Dict]:
         """Parse Gemini response to extract highlight segments."""
         import json
         import re
@@ -597,22 +632,41 @@ Return ONLY valid JSON, no additional text.
             logger.info(f"Parsed {len(raw_highlights)} highlights from Gemini response")
             
             highlights = []
-            filtered_count = 0
+            adjusted_count = 0
             for highlight in raw_highlights:
                 # Validate and convert timestamps
                 start_seconds = self._timestamp_to_seconds(highlight.get("start_time", "00:00"))
                 end_seconds = self._timestamp_to_seconds(highlight.get("end_time", "00:00"))
                 duration = end_seconds - start_seconds
                 
-                # Validate duration
-                if duration < settings.short_duration_min or duration > settings.short_duration_max:
-                    logger.warning(f"Skipping highlight with invalid duration: {duration}s (start: {highlight.get('start_time')}, end: {highlight.get('end_time')})")
-                    filtered_count += 1
-                    continue
+                # Adjust duration instead of filtering (ensure we always have highlights)
+                if duration < settings.short_duration_min:
+                    # Extend to minimum duration
+                    end_seconds = start_seconds + settings.short_duration_min
+                    duration = settings.short_duration_min
+                    adjusted_count += 1
+                    logger.info(f"Extended highlight duration to {duration}s (start: {start_seconds}s)")
+                elif duration > settings.short_duration_max:
+                    # Trim to maximum duration
+                    end_seconds = start_seconds + settings.short_duration_max
+                    duration = settings.short_duration_max
+                    adjusted_count += 1
+                    logger.info(f"Trimmed highlight duration to {duration}s (start: {start_seconds}s)")
+                
+                # Ensure timestamps don't exceed video duration
+                if video_duration > 0:
+                    if end_seconds > video_duration:
+                        end_seconds = video_duration
+                        start_seconds = max(0, end_seconds - settings.short_duration_max)
+                        duration = end_seconds - start_seconds
+                    if start_seconds < 0:
+                        start_seconds = 0
+                        end_seconds = min(settings.short_duration_max, video_duration)
+                        duration = end_seconds
                 
                 highlights.append({
-                    "start_time": highlight.get("start_time"),
-                    "end_time": highlight.get("end_time"),
+                    "start_time": self._seconds_to_timestamp(start_seconds),
+                    "end_time": self._seconds_to_timestamp(end_seconds),
                     "start_seconds": start_seconds,
                     "end_seconds": end_seconds,
                     "duration_seconds": duration,
@@ -624,10 +678,10 @@ Return ONLY valid JSON, no additional text.
                     "tracking_focus": highlight.get("tracking_focus", ""),
                 })
             
-            if filtered_count > 0:
-                logger.warning(f"Filtered out {filtered_count} highlights due to invalid duration")
+            if adjusted_count > 0:
+                logger.info(f"Adjusted {adjusted_count} highlights to meet duration requirements")
             
-            logger.info(f"After duration filtering: {len(highlights)} highlights remain")
+            logger.info(f"After processing: {len(highlights)} highlights ready")
             
             # Sort by engagement score (highest first) and limit to max_highlights
             highlights.sort(key=lambda x: x["engagement_score"], reverse=True)
@@ -657,6 +711,52 @@ Return ONLY valid JSON, no additional text.
                 return int(timestamp)
         except:
             return 0
+    
+    def _seconds_to_timestamp(self, seconds: int) -> str:
+        """Convert seconds to MM:SS format."""
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins:02d}:{secs:02d}"
+    
+    def _create_fallback_highlights(self, duration: int, video_title: str = "") -> List[Dict]:
+        """Create intelligent fallback highlights when Gemini doesn't find any."""
+        highlights = []
+        
+        # Create highlight from beginning (most important for hooks)
+        fallback_duration = min(30, duration, settings.short_duration_max)
+        highlights.append({
+            "start_time": "00:00",
+            "end_time": f"00:{fallback_duration:02d}",
+            "start_seconds": 0,
+            "end_seconds": fallback_duration,
+            "duration_seconds": fallback_duration,
+            "engagement_score": 7,
+            "marketing_effectiveness": f"Video introduction from '{video_title}' - captures initial attention" if video_title else "Video introduction - captures initial attention",
+            "key_elements": ["Video opening", "Introduction"],
+            "suggested_cta": "Watch the full video to learn more!",
+            "category": "product_demo",
+            "tracking_focus": "center of screen",
+        })
+        
+        # If video is long enough, add a middle segment
+        if duration > 120:
+            mid_start = max(30, duration // 3)
+            mid_end = min(mid_start + 30, duration)
+            highlights.append({
+                "start_time": self._seconds_to_timestamp(mid_start),
+                "end_time": self._seconds_to_timestamp(mid_end),
+                "start_seconds": mid_start,
+                "end_seconds": mid_end,
+                "duration_seconds": mid_end - mid_start,
+                "engagement_score": 6,
+                "marketing_effectiveness": "Middle segment - key content area",
+                "key_elements": ["Main content"],
+                "suggested_cta": "Learn more about our product!",
+                "category": "product_demo",
+                "tracking_focus": "center of screen",
+            })
+        
+        return highlights
     
     def _fallback_parse(self, response_text: str) -> List[Dict]:
         """Fallback parsing method if JSON parsing fails."""
