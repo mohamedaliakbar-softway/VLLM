@@ -14,6 +14,8 @@ from services.youtube_processor import YouTubeProcessor
 from services.gemini_analyzer import GeminiAnalyzer
 from services.video_clipper import VideoClipper
 from services.progress_tracker import progress_tracker
+from database import get_db, SessionLocal
+from models import Project, Short
 
 # Configure logging
 logging.basicConfig(
@@ -87,8 +89,19 @@ jobs = {}
 
 async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, platform: str):
     """Background task to process video and emit progress updates (OPTIMIZED FOR 20 SECONDS)."""
+    db = SessionLocal()
     try:
         jobs[job_id] = {"status": "processing", "progress": 0}
+        
+        # Create project record in database
+        project = Project(
+            id=job_id,
+            youtube_url=str(youtube_url),
+            video_id="",  # Will be updated after extracting video info
+            status="processing"
+        )
+        db.add(project)
+        db.commit()
         
         # STEP 1: Extract transcript (2-3 seconds) - NO VIDEO DOWNLOAD
         await progress_tracker.update_progress(job_id, "processing", 10, "Extracting video transcript...")
@@ -98,6 +111,12 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             logger.warning(f"No transcript found for {youtube_url}, falling back to basic video info")
             video_info = youtube_processor.get_video_info(youtube_url)
             video_info['transcript'] = f"{video_info.get('title', '')}. {video_info.get('description', '')}"
+        
+        # Update project with video details
+        project.video_id = video_info.get('video_id', '')
+        project.video_title = video_info.get('title', '')
+        project.video_duration = video_info.get('duration', 0)
+        db.commit()
         
         # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
         await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing content with AI...")
@@ -111,6 +130,9 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         if not highlights:
             await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found")
             jobs[job_id] = {"status": "failed", "error": "No highlights found"}
+            project.status = "failed"
+            project.error_message = "No highlights found"
+            db.commit()
             return
         
         max_shorts = min(max_shorts or settings.max_highlights, len(highlights))
@@ -127,6 +149,9 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         if not segment_files:
             await progress_tracker.update_progress(job_id, "failed", 100, "Failed to download segments")
             jobs[job_id] = {"status": "failed", "error": "Failed to download segments"}
+            project.status = "failed"
+            project.error_message = "Failed to download segments"
+            db.commit()
             return
         
         # STEP 4: Create shorts with FFmpeg in parallel (3-5 seconds) - 10x faster than MoviePy
@@ -141,23 +166,45 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         if not created_shorts:
             await progress_tracker.update_progress(job_id, "failed", 100, "Failed to create shorts")
             jobs[job_id] = {"status": "failed", "error": "Failed to create shorts"}
+            project.status = "failed"
+            project.error_message = "Failed to create shorts"
+            db.commit()
             return
         
         shorts_info = []
         for idx, short in enumerate(created_shorts):
+            # Save short to database
+            db_short = Short(
+                id=str(uuid.uuid4()),
+                project_id=job_id,
+                filename=short["filename"],
+                title=short.get("title", f"Highlight {idx + 1}"),
+                start_time=short["start_time"],
+                end_time=short["end_time"],
+                duration_seconds=short["duration_seconds"],
+                engagement_score=short["engagement_score"],
+                marketing_effectiveness=short["marketing_effectiveness"],
+                suggested_cta=short["suggested_cta"]
+            )
+            db.add(db_short)
+            
             shorts_info.append({
-                "short_id": short["short_id"],
-                "title": short.get("title", f"Highlight {idx + 1}"),
-                "filename": short["filename"],
-                "start_time": short["start_time"],
-                "end_time": short["end_time"],
-                "duration": short["duration_seconds"],
-                "duration_seconds": short["duration_seconds"],
-                "engagement_score": short["engagement_score"],
-                "marketing_effectiveness": short["marketing_effectiveness"],
-                "suggested_cta": short["suggested_cta"],
-                "download_url": f"/api/v1/download/{short['filename']}"
+                "short_id": db_short.id,
+                "title": db_short.title,
+                "filename": db_short.filename,
+                "start_time": db_short.start_time,
+                "end_time": db_short.end_time,
+                "duration": db_short.duration_seconds,
+                "duration_seconds": db_short.duration_seconds,
+                "engagement_score": db_short.engagement_score,
+                "marketing_effectiveness": db_short.marketing_effectiveness,
+                "suggested_cta": db_short.suggested_cta,
+                "download_url": f"/api/v1/download/{db_short.filename}"
             })
+        
+        # Update project status
+        project.status = "completed"
+        db.commit()
         
         jobs[job_id] = {
             "status": "completed",
@@ -177,8 +224,19 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         logger.error(f"Error in background job {job_id}: {str(e)}")
         jobs[job_id] = {"status": "failed", "error": str(e)}
         await progress_tracker.update_progress(job_id, "failed", 100, f"Error: {str(e)}")
+        
+        # Update project status in database
+        try:
+            project = db.query(Project).filter(Project.id == job_id).first()
+            if project:
+                project.status = "failed"
+                project.error_message = str(e)
+                db.commit()
+        except:
+            pass
     finally:
         progress_tracker.cleanup_job(job_id)
+        db.close()
 
 
 @app.get("/")
@@ -280,6 +338,78 @@ async def get_progress(job_id: str):
             "Connection": "keep-alive",
         }
     )
+
+
+@app.get("/api/v1/projects")
+async def list_projects(skip: int = 0, limit: int = 20, db: SessionLocal = None):
+    """List all projects from the database."""
+    if db is None:
+        db = SessionLocal()
+    try:
+        projects = db.query(Project).order_by(Project.created_at.desc()).offset(skip).limit(limit).all()
+        
+        result = []
+        for project in projects:
+            result.append({
+                "id": project.id,
+                "youtube_url": project.youtube_url,
+                "video_id": project.video_id,
+                "video_title": project.video_title,
+                "video_duration": project.video_duration,
+                "status": project.status,
+                "error_message": project.error_message,
+                "shorts_count": len(project.shorts),
+                "created_at": project.created_at.isoformat() if project.created_at else None,
+                "updated_at": project.updated_at.isoformat() if project.updated_at else None
+            })
+        
+        return {"projects": result, "total": len(result)}
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/projects/{project_id}")
+async def get_project(project_id: str, db: SessionLocal = None):
+    """Get a specific project with all its shorts from the database."""
+    if db is None:
+        db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        shorts_info = []
+        for short in project.shorts:
+            shorts_info.append({
+                "short_id": short.id,
+                "title": short.title,
+                "filename": short.filename,
+                "start_time": short.start_time,
+                "end_time": short.end_time,
+                "duration": short.duration_seconds,
+                "duration_seconds": short.duration_seconds,
+                "engagement_score": short.engagement_score,
+                "marketing_effectiveness": short.marketing_effectiveness,
+                "suggested_cta": short.suggested_cta,
+                "download_url": f"/api/v1/download/{short.filename}",
+                "created_at": short.created_at.isoformat() if short.created_at else None
+            })
+        
+        return {
+            "id": project.id,
+            "youtube_url": project.youtube_url,
+            "video_id": project.video_id,
+            "video_title": project.video_title,
+            "video_duration": project.video_duration,
+            "status": project.status,
+            "error_message": project.error_message,
+            "shorts": shorts_info,
+            "created_at": project.created_at.isoformat() if project.created_at else None,
+            "updated_at": project.updated_at.isoformat() if project.updated_at else None
+        }
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
