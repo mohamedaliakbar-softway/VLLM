@@ -1240,7 +1240,28 @@ function VideoEditor() {
         )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Top Bar with Export and Publish buttons - Fixed position */}
+        <div className="fixed top-0 right-0 z-50 bg-white border-b border-l border-gray-200 px-4 py-2 flex items-center gap-2 shadow-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={isProcessing || clips.length === 0}
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+          <Button
+            className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white"
+            size="sm"
+            onClick={handlePublish}
+            disabled={isProcessing || clips.length === 0}
+          >
+            <Share2 className="h-4 w-4" />
+            Publish
+          </Button>
+        </div>
         <div
           className="flex-1 grid overflow-hidden transition-all duration-300"
           style={{
