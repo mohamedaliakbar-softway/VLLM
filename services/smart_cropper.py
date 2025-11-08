@@ -19,9 +19,16 @@ logger = logging.getLogger(__name__)
 class SmartCropper:
     """Intelligent cropping with subject tracking for podcasts and product demos."""
 
-    def __init__(self, enable_smooth_transitions: bool = True, use_intelligent_framing: bool = True):
+    def __init__(self, enable_smooth_transitions: bool = True, use_intelligent_framing: bool = True, fast_mode: bool = True):
+        """Initialize the SmartCropper with optional intelligent framing.
+        
+        Args:
+            use_intelligent_framing: Enable intelligent multi-layer detection
+            fast_mode: Use faster sampling (1 frame/sec) for quick processing
+        """
         # Configuration
         self.use_intelligent_framing = use_intelligent_framing
+        self.fast_mode = fast_mode
         self.enable_smooth_transitions = enable_smooth_transitions
         
         if self.use_intelligent_framing:
@@ -88,7 +95,7 @@ class SmartCropper:
 
         # If aspect ratios match, just resize
         if abs(original_aspect - target_aspect) < 0.01:
-            return clip.resized(new_size=(target_width, target_height))
+            return clip.resized(new_size=(target_width, target_height), resample='lanczos')
 
         # Determine crop dimensions
         if original_aspect > target_aspect:
@@ -141,15 +148,29 @@ class SmartCropper:
         
         # Step 2: Sample video and detect content
         logger.info("Detecting content in video frames...")
-        sample_interval = 3  # Analyze every 3rd frame for performance
-        sample_times = np.arange(0.5, clip.duration, 1.0 / clip.fps * sample_interval)
+        
+        if self.fast_mode:
+            # Fast mode: Sample once per second for 10-20x speed improvement
+            sample_times = np.arange(0.5, clip.duration, 1.0)
+            logger.info(f"  Fast mode: Sampling {len(sample_times)} frames (1 per second)")
+        else:
+            # Quality mode: Sample every 3rd frame for maximum detail
+            sample_interval = 3
+            sample_times = np.arange(0.5, clip.duration, 1.0 / clip.fps * sample_interval)
+            logger.info(f"  Quality mode: Sampling {len(sample_times)} frames (every 3rd frame)")
         
         all_detections = []
         prev_frame = None
         
         for i, t in enumerate(sample_times):
-            if i % 30 == 0:  # Log progress every 30 frames
-                logger.info(f"  Processing frame at t={t:.1f}s ({i}/{len(sample_times)})...")
+            if self.fast_mode:
+                # In fast mode, log every 5 seconds
+                if i % 5 == 0:
+                    logger.info(f"  Processing frame at t={t:.1f}s ({i}/{len(sample_times)})...")
+            else:
+                # In quality mode, log every 30 frames
+                if i % 30 == 0:
+                    logger.info(f"  Processing frame at t={t:.1f}s ({i}/{len(sample_times)})...")
             
             try:
                 # Get frame
@@ -222,7 +243,7 @@ class SmartCropper:
         cropped_clip = clip.transform(crop_frame_function)
         
         # Resize to target size
-        final_clip = cropped_clip.resized(new_size=target_size)
+        final_clip = cropped_clip.resized(new_size=target_size, resample='lanczos')
         
         logger.info("\u2705 Intelligent framing complete!")
         return final_clip
@@ -631,7 +652,7 @@ class SmartCropper:
                                    y1=avg_y,
                                    x2=avg_x + crop_width,
                                    y2=avg_y + crop_height)
-            resized = cropped.resized(new_size=(target_width, target_height))
+            resized = cropped.resized(new_size=(target_width, target_height), resample='lanczos')
 
             logger.info(
                 f"✅ Crop applied successfully, resized to {target_width}x{target_height}"
@@ -643,7 +664,7 @@ class SmartCropper:
             logger.warning(f"Falling back to simple resize without cropping")
             # Fallback: just resize without cropping
             try:
-                return clip.resized(new_size=(target_width, target_height))
+                return clip.resized(new_size=(target_width, target_height), resample='lanczos')
             except Exception as e2:
                 logger.error(f"Resize fallback also failed: {e2}")
                 raise Exception(f"Crop and resize both failed: {e}, {e2}")
