@@ -76,6 +76,11 @@ function VideoEditor() {
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
   const [currentCaption, setCurrentCaption] = useState('');
 
+  // Brand Logo states
+  const [brandLogo, setBrandLogo] = useState(null);
+  const [isApplyingLogo, setIsApplyingLogo] = useState(false);
+  const fileInputRef = useRef(null);
+
   // Available caption styles
   const CAPTION_STYLES = {
     bold_modern: {
@@ -115,6 +120,19 @@ function VideoEditor() {
   useEffect(() => {
     localStorage.setItem('editor-right-panel-visible', String(isRightPanelVisible));
   }, [isRightPanelVisible]);
+
+  // Load brand logo from localStorage
+  useEffect(() => {
+    const savedLogo = localStorage.getItem('brandLogo');
+    if (savedLogo) {
+      try {
+        setBrandLogo(JSON.parse(savedLogo));
+      } catch (error) {
+        console.error('Error loading brand logo from localStorage:', error);
+        localStorage.removeItem('brandLogo');
+      }
+    }
+  }, []);
 
   // Clips data
   const [clips, setClips] = useState([]);
@@ -390,6 +408,247 @@ function VideoEditor() {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Logo Processing Functions
+  const processLogo = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        const img = new Image();
+        
+        img.onload = () => {
+          try {
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Draw image to find content bounds (crop whitespace)
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            tempCtx.drawImage(img, 0, 0);
+            
+            const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+            const pixels = imageData.data;
+            
+            let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+            
+            // Find bounds of non-transparent pixels
+            for (let y = 0; y < img.height; y++) {
+              for (let x = 0; x < img.width; x++) {
+                const alpha = pixels[(y * img.width + x) * 4 + 3];
+                if (alpha > 0) {
+                  if (x < minX) minX = x;
+                  if (x > maxX) maxX = x;
+                  if (y < minY) minY = y;
+                  if (y > maxY) maxY = y;
+                }
+              }
+            }
+            
+            // Calculate cropped dimensions
+            const cropWidth = maxX - minX + 1;
+            const cropHeight = maxY - minY + 1;
+            
+            // Make it square (use larger dimension)
+            const squareSize = Math.max(cropWidth, cropHeight);
+            const offsetX = (squareSize - cropWidth) / 2;
+            const offsetY = (squareSize - cropHeight) / 2;
+            
+            // Set canvas to 80x80px (final size)
+            canvas.width = 80;
+            canvas.height = 80;
+            
+            // Enable image smoothing for better quality
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            // Calculate scale factor
+            const scale = 80 / squareSize;
+            
+            // Draw cropped and scaled image centered
+            ctx.drawImage(
+              img,
+              minX, minY, cropWidth, cropHeight,
+              offsetX * scale, offsetY * scale,
+              cropWidth * scale, cropHeight * scale
+            );
+            
+            // Convert to data URL
+            const dataUrl = canvas.toDataURL('image/png', 1.0);
+            
+            resolve({
+              dataUrl,
+              fileName: file.name,
+              fileSize: file.size,
+              dimensions: { width: 80, height: 80 },
+              uploadedAt: new Date().toISOString()
+            });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target.result;
+      };
+      
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Please upload a PNG, JPG, or WebP image file.',
+        timestamp: new Date().toISOString()
+      }]);
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Logo file size must be less than 5MB.',
+        timestamp: new Date().toISOString()
+      }]);
+      return;
+    }
+
+    try {
+      // Show processing message
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '🎨 Processing your logo...',
+        timestamp: new Date().toISOString()
+      }]);
+
+      // Process the logo
+      const processedLogo = await processLogo(file);
+      
+      // Save to localStorage
+      localStorage.setItem('brandLogo', JSON.stringify(processedLogo));
+      setBrandLogo(processedLogo);
+
+      // Show success message
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `✅ Logo uploaded successfully! Your brand logo is ready. Click "Apply Logo to Video" to add it to your clip.`,
+        timestamp: new Date().toISOString()
+      }]);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Error processing logo:', error);
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Failed to process logo. Please try again with a different image.',
+        timestamp: new Date().toISOString()
+      }]);
+    }
+  };
+
+  const removeLogo = () => {
+    localStorage.removeItem('brandLogo');
+    setBrandLogo(null);
+    setChatHistory(prev => [...prev, {
+      role: 'assistant',
+      content: '🗑️ Brand logo removed successfully.',
+      timestamp: new Date().toISOString()
+    }]);
+  };
+
+  const applyLogoToVideo = async () => {
+    if (!selectedClip || !brandLogo) return;
+
+    setIsApplyingLogo(true);
+
+    try {
+      // Show start message
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: '🎬 Applying your brand logo to the video...',
+        timestamp: new Date().toISOString()
+      }]);
+
+      // Call backend API
+      const response = await fetch(`http://localhost:8000/api/v1/clips/${selectedClip.id}/add-logo`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          logo_data_url: brandLogo.dataUrl,
+          position: 'top_right',
+          opacity: 0.9,
+          padding: 20,
+          logo_size: 80
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to apply logo');
+      }
+
+      const data = await response.json();
+      const jobId = data.job_id;
+
+      // Poll for job completion
+      const pollLogoJob = async () => {
+        const jobResponse = await fetch(`http://localhost:8000/api/v1/jobs/${jobId}`);
+        const jobData = await jobResponse.json();
+
+        if (jobData.status === 'completed') {
+          // Update clip URL
+          const updatedClipsResponse = await fetch('http://localhost:8000/api/v1/shorts');
+          const updatedClips = await updatedClipsResponse.json();
+          setClips(updatedClips);
+
+          // Reload video
+          if (videoRef.current) {
+            videoRef.current.load();
+          }
+
+          setChatHistory(prev => [...prev, {
+            role: 'assistant',
+            content: '✅ Logo applied successfully! Your video now has your brand watermark.',
+            timestamp: new Date().toISOString()
+          }]);
+
+          setIsApplyingLogo(false);
+        } else if (jobData.status === 'failed') {
+          throw new Error(jobData.error || 'Logo processing failed');
+        } else {
+          // Continue polling
+          setTimeout(pollLogoJob, 2000);
+        }
+      };
+
+      pollLogoJob();
+
+    } catch (error) {
+      console.error('Error applying logo:', error);
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Failed to apply logo: ${error.message}`,
+        timestamp: new Date().toISOString()
+      }]);
+      setIsApplyingLogo(false);
+    }
   };
 
   const handleSendMessage = async (e) => {
@@ -1028,6 +1287,17 @@ function VideoEditor() {
                   <ArrowLeft className="h-3 w-3 mr-1" />
                   Change video URL
                 </Badge>
+                {brandLogo ? (
+                  <Badge variant="outline" className="cursor-pointer hover:bg-indigo-100 border-indigo-300" onClick={applyLogoToVideo} disabled={isApplyingLogo}>
+                    <span className="mr-1">✨</span>
+                    {isApplyingLogo ? 'Applying Logo...' : 'Apply Logo to Video'}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="cursor-pointer hover:bg-indigo-100 border-indigo-300" onClick={() => fileInputRef.current?.click()}>
+                    <span className="mr-1">🎨</span>
+                    Add Your Brand Logo
+                  </Badge>
+                )}
               </div>
             </div>
 
@@ -1067,8 +1337,54 @@ function VideoEditor() {
               </div>
             </ScrollArea>
 
+            {/* Logo Preview Bar */}
+            {brandLogo && (
+              <div className="border-t border-gray-200 px-4 py-2 bg-indigo-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-white rounded border border-indigo-200 flex items-center justify-center overflow-hidden">
+                    <img 
+                      src={brandLogo.dataUrl} 
+                      alt="Brand Logo" 
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-indigo-900">{brandLogo.fileName}</p>
+                    <p className="text-xs text-indigo-600">{(brandLogo.fileSize / 1024).toFixed(1)} KB • {brandLogo.dimensions.width}x{brandLogo.dimensions.height}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={removeLogo}
+                  className="text-indigo-600 hover:text-indigo-800 transition-colors p-1"
+                  title="Remove logo"
+                >
+                  <span className="text-lg">×</span>
+                </button>
+              </div>
+            )}
+
             <form className="border-t border-gray-200 p-4 bg-gray-50" onSubmit={handleSendMessage}>
               <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 focus-within:ring-2 focus-within:ring-[#1E201E] focus-within:border-[#1E201E]">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                
+                {/* Attachment button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-1 rounded hover:bg-gray-100 transition-colors ${brandLogo ? 'text-indigo-600' : 'text-gray-500'}`}
+                  title={brandLogo ? "Change logo" : "Add logo"}
+                  disabled={isAiThinking}
+                >
+                  <span className="text-lg">📎</span>
+                </button>
+
                 <Input
                   type="text"
                   placeholder={isAiThinking ? "AI is processing..." : "Ask Copilot to edit your video..."}
