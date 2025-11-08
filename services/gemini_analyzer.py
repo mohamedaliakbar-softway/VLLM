@@ -15,12 +15,64 @@ class GeminiAnalyzer:
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model = "gemini-2.5-flash"
     
+    def analyze_transcript_for_highlights(
+        self, 
+        transcript: str,
+        video_title: Optional[str] = None,
+        video_description: Optional[str] = None,
+        duration: int = 0
+    ) -> List[Dict]:
+        """
+        Analyze video transcript to find the most engaging highlights for marketing shorts.
+        This is MUCH faster than analyzing the full video.
+        
+        Args:
+            transcript: Video transcript/subtitle text
+            video_title: Optional video title for context
+            video_description: Optional video description
+            duration: Video duration in seconds
+            
+        Returns:
+            List of highlight segments with timestamps and descriptions
+        """
+        try:
+            # Create a comprehensive prompt for transcript-based highlight detection
+            prompt = self._create_transcript_highlight_prompt(
+                transcript, video_title, video_description, duration
+            )
+            
+            # Analyze transcript with Gemini (text-only, super fast)
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    top_p=0.9,
+                )
+            )
+            
+            # Parse the response to extract highlights
+            response_text = response.text if response.text else ""
+            if not response_text:
+                logger.error("Empty response from Gemini API")
+                return []
+            
+            highlights = self._parse_highlights_response(response_text)
+            
+            logger.info(f"Found {len(highlights)} highlights from transcript analysis")
+            return highlights
+        
+        except Exception as e:
+            logger.error(f"Error analyzing transcript: {str(e)}")
+            raise
+    
     def analyze_video_for_highlights(
         self, 
         video_url: str, 
         video_title: Optional[str] = None
     ) -> List[Dict]:
         """
+        DEPRECATED: Use analyze_transcript_for_highlights for 10x faster analysis.
         Analyze video to find the most engaging highlights for marketing shorts.
         
         Args:
@@ -62,6 +114,69 @@ class GeminiAnalyzer:
         except Exception as e:
             logger.error(f"Error analyzing video: {str(e)}")
             raise
+    
+    def _create_transcript_highlight_prompt(
+        self, 
+        transcript: str, 
+        video_title: Optional[str] = None,
+        video_description: Optional[str] = None,
+        duration: int = 0
+    ) -> str:
+        """Create a prompt for transcript-based highlight detection."""
+        context = ""
+        if video_title:
+            context += f"Video Title: {video_title}\n"
+        if video_description:
+            context += f"Description: {video_description}\n"
+        if duration:
+            context += f"Duration: {duration} seconds\n"
+        
+        base_prompt = f"""{context}
+
+Transcript:
+{transcript}
+
+---
+
+You are an expert video analyst specializing in creating engaging marketing shorts for social media platforms.
+
+Based on the transcript above, identify the MOST ENGAGING and MARKETING-EFFECTIVE segments that would:
+1. Capture attention immediately (hook viewers in first 3 seconds)
+2. Showcase key product features, benefits, or value propositions
+3. Create urgency or desire for the product/service
+4. Be suitable for 15-30 second marketing shorts
+
+Analyze the transcript and identify up to 3 best highlight segments. For each segment, provide:
+- Start time (in MM:SS format, estimated from the transcript flow)
+- End time (in MM:SS format)
+- Duration (should be 15-30 seconds)
+- Engagement score (1-10, where 10 is most engaging)
+- Why this segment is effective for marketing
+- Key elements that make it engaging
+- Suggested call-to-action
+- Category: "podcast" (person speaking/interview) or "product_demo" (screen recording/product)
+- Tracking focus: What should be centered in the frame
+
+Format your response as JSON with this structure:
+{{
+  "highlights": [
+    {{
+      "start_time": "MM:SS",
+      "end_time": "MM:SS",
+      "duration_seconds": 15-30,
+      "engagement_score": 1-10,
+      "marketing_effectiveness": "explanation",
+      "key_elements": ["element1", "element2"],
+      "suggested_cta": "call to action text",
+      "category": "podcast" or "product_demo",
+      "tracking_focus": "description of what to track"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON, no additional text.
+"""
+        return base_prompt
     
     def _create_highlight_prompt(self, video_title: Optional[str] = None) -> str:
         """Create a prompt optimized for marketing highlight detection."""

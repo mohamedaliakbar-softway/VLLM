@@ -2,9 +2,11 @@
 import yt_dlp
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
 from config import settings
 import logging
+import subprocess
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +123,173 @@ class YouTubeProcessor:
         except Exception as e:
             logger.error(f"Error downloading video: {str(e)}")
             raise
+    
+    def get_transcript(self, youtube_url: str, video_id: Optional[str] = None) -> Dict:
+        """
+        Extract transcript/subtitles from YouTube video without downloading.
+        This is much faster than downloading the entire video.
+        
+        Args:
+            youtube_url: YouTube video URL
+            video_id: Optional video ID for naming
+            
+        Returns:
+            dict with transcript text and video metadata
+        """
+        try:
+            if not video_id:
+                video_id = self._extract_video_id(youtube_url)
+            
+            ydl_opts = {
+                'writesubtitles': True,
+                'writeautomaticsub': True,
+                'subtitleslangs': ['en', 'en-US', 'en-GB'],  # Broader language fallback
+                'skip_download': True,
+                'quiet': True,
+                'no_warnings': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                
+                # Get transcript/subtitles
+                transcript_text = ""
+                subtitles = info.get('subtitles', {}) or info.get('automatic_captions', {})
+                
+                # Try multiple English variants
+                subtitle_key = None
+                for lang in ['en', 'en-US', 'en-GB', 'en-AU']:
+                    if lang in subtitles:
+                        subtitle_key = lang
+                        break
+                
+                if subtitle_key:
+                    # Download subtitle content
+                    subtitle_url = subtitles[subtitle_key][0]['url']
+                    import requests
+                    response = requests.get(subtitle_url)
+                    
+                    # Parse VTT or JSON subtitle format
+                    transcript_text = self._parse_subtitles(response.text)
+                else:
+                    logger.warning(f"No English subtitles found for video {video_id}")
+                
+                duration = info.get('duration', 0)
+                
+                logger.info(f"Extracted transcript for video {video_id}, length: {len(transcript_text)} chars")
+                
+                return {
+                    'transcript': transcript_text,
+                    'duration': duration,
+                    'title': info.get('title', ''),
+                    'video_id': video_id,
+                    'thumbnail': info.get('thumbnail', ''),
+                    'description': info.get('description', '')[:500]  # First 500 chars
+                }
+        
+        except Exception as e:
+            logger.error(f"Error extracting transcript: {str(e)}")
+            # Return empty transcript on error - analysis can still proceed with title/description
+            return {
+                'transcript': '',
+                'duration': 0,
+                'title': '',
+                'video_id': video_id or '',
+                'thumbnail': '',
+                'description': ''
+            }
+    
+    def download_video_segments(
+        self, 
+        youtube_url: str, 
+        segments: List[Dict], 
+        video_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Download only specific segments from a video using FFmpeg (much faster).
+        
+        Args:
+            youtube_url: YouTube video URL
+            segments: List of segments with start_seconds and end_seconds
+            video_id: Optional video ID for naming
+            
+        Returns:
+            List of downloaded segment file paths
+        """
+        try:
+            if not video_id:
+                video_id = self._extract_video_id(youtube_url)
+            
+            downloaded_segments = []
+            
+            # Get video stream URL without downloading
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'quiet': True,
+                'no_warnings': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                video_url = info['url']  # Direct video URL
+                
+                # Download each segment using FFmpeg (parallel would be even faster)
+                for idx, segment in enumerate(segments, 1):
+                    start_time = segment.get('start_seconds', 0)
+                    duration = segment.get('duration_seconds', 30)
+                    
+                    output_path = self.temp_dir / f"{video_id}_segment_{idx}.mp4"
+                    
+                    # Use FFmpeg to download only the segment
+                    # This is MUCH faster than downloading the entire video
+                    cmd = [
+                        'ffmpeg',
+                        '-ss', str(start_time),  # Start time
+                        '-i', video_url,  # Input URL
+                        '-t', str(duration),  # Duration
+                        '-c', 'copy',  # Copy streams (no re-encoding, super fast)
+                        '-y',  # Overwrite output
+                        str(output_path)
+                    ]
+                    
+                    subprocess.run(cmd, capture_output=True, check=True)
+                    
+                    downloaded_segments.append({
+                        'segment_id': idx,
+                        'file_path': str(output_path),
+                        'start_time': start_time,
+                        'duration': duration
+                    })
+                    
+                    logger.info(f"Downloaded segment {idx}: {output_path}")
+            
+            return downloaded_segments
+        
+        except Exception as e:
+            logger.error(f"Error downloading video segments: {str(e)}")
+            raise
+    
+    def _parse_subtitles(self, subtitle_content: str) -> str:
+        """Parse VTT or JSON subtitle format and extract plain text."""
+        import re
+        
+        # Remove WebVTT headers
+        content = re.sub(r'WEBVTT\n.*?\n\n', '', subtitle_content, flags=re.DOTALL)
+        
+        # Remove timestamps (00:00:00.000 --> 00:00:03.000)
+        content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', content)
+        
+        # Remove cue identifiers (numbers at start of lines)
+        content = re.sub(r'^\d+\n', '', content, flags=re.MULTILINE)
+        
+        # Remove alignment tags and formatting
+        content = re.sub(r'<[^>]+>', '', content)
+        
+        # Clean up extra whitespace and newlines
+        content = re.sub(r'\n+', ' ', content)
+        content = re.sub(r'\s+', ' ', content)
+        
+        return content.strip()
     
     def _extract_video_id(self, url: str) -> str:
         """Extract video ID from YouTube URL."""

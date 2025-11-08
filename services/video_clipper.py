@@ -3,6 +3,8 @@ from moviepy import VideoFileClip
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
+import subprocess
+import concurrent.futures
 from config import settings, PLATFORM_DIMENSIONS
 from services.smart_cropper import SmartCropper
 
@@ -16,6 +18,112 @@ class VideoClipper:
         self.output_dir = Path(settings.output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.smart_cropper = SmartCropper()
+    
+    def create_shorts_fast(
+        self, 
+        segment_files: List[Dict],
+        video_id: str,
+        highlights: List[Dict],
+        platform: str = "default"
+    ) -> List[Dict]:
+        """
+        Create short video clips using FFmpeg directly (10x faster than MoviePy).
+        
+        Args:
+            segment_files: List of downloaded segment file paths
+            video_id: Video ID for naming output files
+            highlights: Highlight metadata for each segment
+            platform: Platform name for resizing
+            
+        Returns:
+            List of created short video info
+        """
+        created_shorts = []
+        
+        # Get platform dimensions
+        platform_key = platform.lower() if platform else "default"
+        target_size = PLATFORM_DIMENSIONS.get(
+            platform_key, 
+            PLATFORM_DIMENSIONS["default"]
+        )
+        target_width, target_height = target_size
+        
+        def process_segment(idx, segment_file, highlight):
+            """Process a single segment with FFmpeg."""
+            try:
+                input_path = segment_file['file_path']
+                
+                # Generate output filename
+                platform_suffix = platform_key if platform_key != "default" else ""
+                if platform_suffix:
+                    output_filename = f"{video_id}_short_{idx}_{platform_suffix}.mp4"
+                else:
+                    output_filename = f"{video_id}_short_{idx}.mp4"
+                output_path = self.output_dir / output_filename
+                
+                # Build FFmpeg command for fast processing
+                # Use veryfast preset and crop/scale in one pass
+                cmd = [
+                    'ffmpeg',
+                    '-i', input_path,
+                    '-vf', f'scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2',
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',  # 10x faster than 'slow'
+                    '-crf', '23',  # Good quality, faster encoding
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-movflags', '+faststart',
+                    '-y',  # Overwrite output
+                    str(output_path)
+                ]
+                
+                # Run FFmpeg
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True,
+                    check=False
+                )
+                
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg error for segment {idx}: {result.stderr}")
+                    return None
+                
+                logger.info(f"Created short {idx}: {output_filename}")
+                
+                return {
+                    "short_id": idx,
+                    "file_path": str(output_path),
+                    "filename": output_filename,
+                    "start_time": highlight.get("start_time", "00:00"),
+                    "end_time": highlight.get("end_time", "00:30"),
+                    "duration_seconds": highlight.get("duration_seconds", 30),
+                    "engagement_score": highlight.get("engagement_score", 0),
+                    "marketing_effectiveness": highlight.get("marketing_effectiveness", ""),
+                    "suggested_cta": highlight.get("suggested_cta", ""),
+                }
+            
+            except Exception as e:
+                logger.error(f"Error processing segment {idx}: {str(e)}")
+                return None
+        
+        # Process all segments in parallel for maximum speed
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = []
+            for idx, (segment_file, highlight) in enumerate(zip(segment_files, highlights), 1):
+                future = executor.submit(process_segment, idx, segment_file, highlight)
+                futures.append(future)
+            
+            # Collect results
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result:
+                    created_shorts.append(result)
+        
+        # Sort by short_id to maintain order
+        created_shorts.sort(key=lambda x: x["short_id"])
+        
+        return created_shorts
     
     def _resize_for_platform(
         self, 
