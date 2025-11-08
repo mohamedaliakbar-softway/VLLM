@@ -10,30 +10,16 @@ import {
   Plus,
   ChevronUp,
   ChevronDown,
-  SkipForward,
-  SkipBackIcon,
   Loader2,
-  Scissors,
   Type,
   Volume2,
   Wand2,
-  Layers,
-  Copy,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Maximize2,
-  Save,
   Sparkles,
   Video,
   GripVertical,
   Maximize,
   Minimize,
-  ChevronLeft,
-  ChevronRight,
   PanelLeft,
-  PanelRight,
 } from "lucide-react";
 import axios from "axios";
 import { extractVideoId, getThumbnailUrl } from "../utils/youtube";
@@ -42,9 +28,6 @@ import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -55,7 +38,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
