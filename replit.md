@@ -1,7 +1,7 @@
 # Video Shorts Generator - Replit Setup
 
 ## Overview
-An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). Uses Google's Gemini AI to identify the most compelling segments.
+An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). Uses Google's Gemini AI to identify the most compelling segments. Now with full user authentication via Replit Auth!
 
 ## Project Type
 - **Backend**: FastAPI REST API (Python 3.11)
@@ -114,7 +114,23 @@ Other settings are configured in `config.py` with sensible defaults:
    - Right: Properties panel for clip customization
 7. **Publishing**: Export and share generated shorts
 
+## Authentication
+- **Replit Auth Integration**: Users can sign in using Google, GitHub, Twitter, Apple, or email/password
+- **User Management**: User profiles stored in PostgreSQL database
+- **Session Management**: Secure session cookies with 7-day expiration
+- **Protected Routes**: Backend endpoints can require authentication
+- **OAuth Flow**: Full PKCE-compliant OAuth 2.0 implementation
+- **User Profile Display**: Shows user name and profile picture in navigation bar
+
 ## Recent Changes
+- November 8, 2025: **USER AUTHENTICATION ADDED**
+  - **Full Replit OAuth integration** with support for Google, GitHub, Twitter, Apple, and email/password login
+  - **User database**: PostgreSQL users table stores authenticated user profiles
+  - **Session management**: Secure HTTP-only cookies with 7-day persistence
+  - **Authentication endpoints**: `/auth/login`, `/auth/logout`, `/auth/callback`, `/auth/me`
+  - **Frontend integration**: Sign In/Logout buttons, user profile display with avatar
+  - **Proxy configuration**: Vite proxy configured to forward both `/api` and `/auth` requests to backend
+  - **Security**: PKCE-compliant OAuth flow with state and nonce validation
 - November 8, 2025: **CRITICAL BUG FIX - Backend Import Conflict Resolved**
   - **Fixed SDK conflict**: Standardized all Gemini AI imports to use `google-genai` SDK
   - **Updated caption_generator.py**: Migrated from old `google.generativeai` to new `from google import genai`

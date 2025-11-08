@@ -25,7 +25,10 @@ from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
 from models import Project, Short, Publication, AccountToken
 from migrate import main as run_migrations
+
 import auth
+from utils.logging_decorator import log_async_execution, StepLogger
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -131,22 +134,39 @@ jobs = {}
 async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, platform: str):
     """Background task to process video and emit progress updates (OPTIMIZED FOR 20 SECONDS)."""
     db = SessionLocal()
+    logger.info(f"========== STARTING VIDEO PROCESSING ==========")
+    logger.info(f"Job ID: {job_id}")
+    logger.info(f"YouTube URL: {youtube_url}")
+    logger.info(f"Max Shorts: {max_shorts}")
+    logger.info(f"Platform: {platform}")
+    logger.info(f"===============================================")
+    
     try:
         jobs[job_id] = {"status": "processing", "progress": 0}
         
         # Create project record in database
-        project = Project(
-            id=job_id,
-            youtube_url=str(youtube_url),
-            video_id="",  # Will be updated after extracting video info
-            status="processing"
-        )
-        db.add(project)
-        db.commit()
+        with StepLogger("Create Database Project", {"job_id": job_id}):
+            project = Project(
+                id=job_id,
+                youtube_url=str(youtube_url),
+                video_id="",  # Will be updated after extracting video info
+                status="processing"
+            )
+            db.add(project)
+            db.commit()
+            logger.info(f"Project {job_id} created in database")
         
         # STEP 1: Extract transcript (2-3 seconds) - NO VIDEO DOWNLOAD
         await progress_tracker.update_progress(job_id, "processing", 10, "Extracting video transcript...")
-        video_info = youtube_processor.get_transcript(youtube_url)
+        
+        with StepLogger("Extract Transcript", {"url": youtube_url}):
+            try:
+                video_info = youtube_processor.get_transcript(youtube_url)
+                logger.info(f"Transcript extracted: {len(video_info.get('transcript', ''))} chars")
+            except Exception as e:
+                logger.error(f"Failed to extract transcript: {type(e).__name__}: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise Exception(f"Transcript extraction failed: {str(e)}") from e
         
         if not video_info.get('transcript'):
             logger.warning(f"No transcript found for {youtube_url}, falling back to basic video info")
@@ -154,10 +174,12 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             video_info['transcript'] = f"{video_info.get('title', '')}. {video_info.get('description', '')}"
         
         # Update project with video details
-        project.video_id = video_info.get('video_id', '')
-        project.video_title = video_info.get('title', '')
-        project.video_duration = video_info.get('duration', 0)
-        db.commit()
+        with StepLogger("Update Project Details"):
+            project.video_id = video_info.get('video_id', '')
+            project.video_title = video_info.get('title', '')
+            project.video_duration = video_info.get('duration', 0)
+            db.commit()
+            logger.info(f"Project updated: video_id={project.video_id}, title={project.video_title}, duration={project.video_duration}s")
         
         # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
         await progress_tracker.update_progress(job_id, "processing", 30, "Analyzing content with AI...")
@@ -166,12 +188,19 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         transcript_length = len(transcript) if transcript else 0
         logger.info(f"Analyzing transcript for job {job_id}: {transcript_length} chars, duration: {video_info.get('duration', 0)}s")
         
-        highlights = gemini_analyzer.analyze_transcript_for_highlights(
-            transcript,
-            video_info.get('title', ''),
-            video_info.get('description', ''),
-            video_info.get('duration', 0)
-        )
+        with StepLogger("Gemini AI Analysis", {"transcript_length": transcript_length}):
+            try:
+                highlights = gemini_analyzer.analyze_transcript_for_highlights(
+                    transcript,
+                    video_info.get('title', ''),
+                    video_info.get('description', ''),
+                    video_info.get('duration', 0)
+                )
+                logger.info(f"Gemini analysis completed: {len(highlights) if highlights else 0} highlights found")
+            except Exception as e:
+                logger.error(f"Gemini analysis failed: {type(e).__name__}: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise Exception(f"AI analysis failed: {str(e)}") from e
         
         if not highlights:
             error_msg = f"No highlights found (transcript length: {transcript_length} chars, duration: {video_info.get('duration', 0)}s)"
@@ -185,37 +214,66 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         
         max_shorts = min(max_shorts or settings.max_highlights, len(highlights))
         highlights = highlights[:max_shorts]
+        logger.info(f"Processing {len(highlights)} highlights (max_shorts={max_shorts})")
         
         # STEP 3: Download ONLY the specific segments (5-8 seconds) - NOT the entire video
         await progress_tracker.update_progress(job_id, "processing", 50, f"Downloading {len(highlights)} segments...")
-        segment_files = youtube_processor.download_video_segments(
-            youtube_url,
-            highlights,
-            video_info.get('video_id')
-        )
+        
+        with StepLogger("Download Video Segments", {"count": len(highlights)}):
+            try:
+                segment_files = youtube_processor.download_video_segments(
+                    youtube_url,
+                    highlights,
+                    video_info.get('video_id')
+                )
+                logger.info(f"Downloaded {len(segment_files) if segment_files else 0} segment files")
+                
+                if segment_files:
+                    for i, seg in enumerate(segment_files):
+                        logger.info(f"  Segment {i+1}: {seg.get('file_path', 'unknown')}")
+            except Exception as e:
+                logger.error(f"Segment download failed: {type(e).__name__}: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise Exception(f"Video segment download failed: {str(e)}") from e
         
         if not segment_files:
-            await progress_tracker.update_progress(job_id, "failed", 100, "Failed to download segments")
-            jobs[job_id] = {"status": "failed", "error": "Failed to download segments"}
+            error_msg = "Failed to download segments - no files returned"
+            logger.error(error_msg)
+            await progress_tracker.update_progress(job_id, "failed", 100, error_msg)
+            jobs[job_id] = {"status": "failed", "error": error_msg}
             project.status = "failed"
-            project.error_message = "Failed to download segments"
+            project.error_message = error_msg
             db.commit()
             return
         
         # STEP 4: Create shorts with MoviePy and smart cropping in parallel (5-10 seconds) - proper landscape-to-portrait conversion
         await progress_tracker.update_progress(job_id, "processing", 70, f"Creating {len(highlights)} shorts...")
-        created_shorts = video_clipper.create_shorts_fast(
-            segment_files,
-            video_info['video_id'],
-            highlights,
-            platform=platform
-        )
+        
+        with StepLogger("Create Shorts with Smart Cropping", {"count": len(segment_files), "platform": platform}):
+            try:
+                created_shorts = video_clipper.create_shorts_fast(
+                    segment_files,
+                    video_info['video_id'],
+                    highlights,
+                    platform=platform
+                )
+                logger.info(f"Created {len(created_shorts) if created_shorts else 0} shorts")
+                
+                if created_shorts:
+                    for i, short in enumerate(created_shorts):
+                        logger.info(f"  Short {i+1}: {short.get('filename', 'unknown')} ({short.get('duration_seconds', 0)}s)")
+            except Exception as e:
+                logger.error(f"Shorts creation failed: {type(e).__name__}: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise Exception(f"Video shorts creation failed: {str(e)}") from e
         
         if not created_shorts:
-            await progress_tracker.update_progress(job_id, "failed", 100, "Failed to create shorts")
-            jobs[job_id] = {"status": "failed", "error": "Failed to create shorts"}
+            error_msg = "Failed to create shorts - no shorts generated"
+            logger.error(error_msg)
+            await progress_tracker.update_progress(job_id, "failed", 100, error_msg)
+            jobs[job_id] = {"status": "failed", "error": error_msg}
             project.status = "failed"
-            project.error_message = "Failed to create shorts"
+            project.error_message = error_msg
             db.commit()
             return
         
@@ -288,22 +346,38 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             youtube_processor.cleanup(segment['file_path'])
         
     except Exception as e:
-        logger.error(f"Error in background job {job_id}: {str(e)}")
-        jobs[job_id] = {"status": "failed", "error": str(e)}
-        await progress_tracker.update_progress(job_id, "failed", 100, f"Error: {str(e)}")
+        # Comprehensive error logging
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        logger.error(f"========== VIDEO PROCESSING FAILED ==========")
+        logger.error(f"Job ID: {job_id}")
+        logger.error(f"Error Type: {error_type}")
+        logger.error(f"Error Message: {error_msg}")
+        logger.error(f"Full Traceback:\n{traceback.format_exc()}")
+        logger.error(f"============================================")
+        
+        # Create user-friendly error message
+        user_error_msg = f"{error_type}: {error_msg}"
+        
+        jobs[job_id] = {"status": "failed", "error": user_error_msg}
+        await progress_tracker.update_progress(job_id, "failed", 100, f"Error: {user_error_msg}")
         
         # Update project status in database
         try:
             project = db.query(Project).filter(Project.id == job_id).first()
             if project:
                 project.status = "failed"
-                project.error_message = str(e)
+                project.error_message = user_error_msg
                 db.commit()
-        except:
-            pass
+                logger.info(f"Project {job_id} marked as failed in database")
+        except Exception as db_error:
+            logger.error(f"Failed to update database: {type(db_error).__name__}: {str(db_error)}")
     finally:
+        logger.info(f"Cleaning up job {job_id}")
         progress_tracker.cleanup_job(job_id)
         db.close()
+        logger.info(f"========== VIDEO PROCESSING ENDED ==========\n")
 
 
 @app.get("/")
