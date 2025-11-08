@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Video, Play, Trash2, Download, Calendar, TrendingUp, ArrowLeft, 
-  BarChart3, Plus, Sparkles, Film, Share2, X
+  BarChart3, Plus, Sparkles, Film, Share2, X, User, Settings, LogOut
 } from 'lucide-react';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ function Dashboard() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [expandedVideo, setExpandedVideo] = useState(null);
+  const [user, setUser] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [stats, setStats] = useState({
     totalVideos: 0,
     totalShorts: 0,
@@ -25,6 +27,12 @@ function Dashboard() {
   const location = useLocation();
 
   useEffect(() => {
+    // Check if user is logged in
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+
     // Check if coming from export
     if (location.state?.fromExport && location.state?.exportedClips) {
       setExportedClips(location.state.exportedClips);
@@ -153,6 +161,13 @@ function Dashboard() {
     // For now, we'll just update the state
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    setUser(null);
+    setShowProfileMenu(false);
+    navigate('/');
+  };
+
   return (
     <div className="min-h-screen bg-white">
       {/* Enhanced Header */}
@@ -160,20 +175,79 @@ function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" onClick={() => navigate('/')}>
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
+              <div className="w-8 h-8 bg-[#1E201E] rounded-lg flex items-center justify-center">
+                <Video className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-lg font-semibold text-gray-900">HighlightAI</span>
             </div>
+            
             <div className="flex items-center gap-3">
               <Sparkles className="h-6 w-6 text-[#1E201E]" />
               <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
             </div>
-            <div>
+            
+            <div className="flex items-center gap-3">
               <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={() => navigate('/')}>
                 <Plus className="h-4 w-4" />
                 Create New
               </Button>
+
+              {user && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1E201E] to-gray-700 flex items-center justify-center text-white text-sm font-bold">
+                      {user.avatar ? (
+                        <img src={user.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        user.name?.charAt(0).toUpperCase() || 'U'
+                      )}
+                    </div>
+                  </button>
+
+                  {showProfileMenu && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                          <p className="text-xs text-gray-600 truncate">{user.email}</p>
+                        </div>
+                        <Link
+                          to="/profile"
+                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setShowProfileMenu(false)}
+                        >
+                          <User className="h-4 w-4" />
+                          Profile
+                        </Link>
+                        <Link
+                          to="/settings"
+                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setShowProfileMenu(false)}
+                        >
+                          <Settings className="h-4 w-4" />
+                          Settings
+                        </Link>
+                        <div className="border-t border-gray-100 mt-2 pt-2">
+                          <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Logout
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
