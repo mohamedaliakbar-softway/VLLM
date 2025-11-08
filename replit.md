@@ -115,6 +115,15 @@ Other settings are configured in `config.py` with sensible defaults:
 7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **CRITICAL BUG FIX - Backend Import Conflict Resolved**
+  - **Fixed SDK conflict**: Standardized all Gemini AI imports to use `google-genai` SDK
+  - **Updated caption_generator.py**: Migrated from old `google.generativeai` to new `from google import genai`
+  - **Proper API usage**: Fixed audio transcription to use typed `types.Content` with `types.Part` and `types.Blob`
+  - **Backend now starts**: Resolved import errors that prevented FastAPI server from running on port 8000
+  - **Auth flow working**: Sign In button now properly redirects to Replit OAuth (previously showed blank page)
+  - **Health check passing**: Backend responds correctly at `/health` endpoint
+  - **Architect reviewed**: All changes verified for correct SDK usage and runtime compatibility
+
 - November 8, 2025: **DATABASE PERSISTENCE ADDED**
   - **Created PostgreSQL database schema** with `projects` and `shorts` tables
   - **Automatic saving**: All generated videos now persist to database
