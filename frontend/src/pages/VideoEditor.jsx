@@ -946,17 +946,20 @@ function VideoEditor() {
   const generateCaptions = async () => {
     if (!selectedClip) return;
 
-    try {
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "🎤 Generating captions from audio... This may take a minute.",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+    // Add loading message to chat
+    const loadingMessageId = Date.now();
+    setChatHistory((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "🎤 Generating captions from audio... This may take a minute.",
+        timestamp: new Date().toISOString(),
+        isLoading: true,
+        id: loadingMessageId,
+      },
+    ]);
 
+    try {
       // Start caption generation
       const response = await axios.post(
         `/api/v1/clips/${selectedClip.id}/generate-captions`,
@@ -965,27 +968,35 @@ function VideoEditor() {
       const jobId = response.data.job_id;
 
       // Poll for completion
-      pollCaptionJob(jobId);
+      pollCaptionJob(jobId, loadingMessageId);
     } catch (error) {
       console.error("Caption generation failed:", error);
-      setChatHistory((prev) => [
-        ...prev,
-        {
+      
+      // Remove loading message and add error
+      setChatHistory((prev) => 
+        prev.filter(msg => msg.id !== loadingMessageId).concat({
           role: "assistant",
           content: `❌ Failed to generate captions: ${error.message}`,
           timestamp: new Date().toISOString(),
-        },
-      ]);
+        })
+      );
     }
   };
 
-  const pollCaptionJob = (jobId) => {
+  const pollCaptionJob = (jobId, loadingMessageId) => {
     const pollInterval = setInterval(async () => {
       try {
         const response = await axios.get(`/api/v1/job/${jobId}`);
         const { status, progress } = response.data;
 
-        setProcessingStatus(`Generating captions... ${progress}%`);
+        // Update loading message with progress
+        setChatHistory((prev) => 
+          prev.map(msg => 
+            msg.id === loadingMessageId 
+              ? { ...msg, content: `🎤 Generating captions... ${Math.round(progress || 0)}%` }
+              : msg
+          )
+        );
 
         if (status === "completed") {
           clearInterval(pollInterval);
@@ -998,29 +1009,38 @@ function VideoEditor() {
           setCaptions(captionsResponse.data.captions);
           setShowCaptionPreview(true);
 
-          setChatHistory((prev) => [
-            ...prev,
-            {
+          // Remove loading message and add success message
+          setChatHistory((prev) => 
+            prev.filter(msg => msg.id !== loadingMessageId).concat({
               role: "assistant",
-              content:
-                "✅ Captions generated! Choose a style and preview below.",
+              content: "✅ Captions generated! Choose a style and preview below.",
               timestamp: new Date().toISOString(),
-            },
-          ]);
+            })
+          );
         } else if (status === "failed") {
           clearInterval(pollInterval);
-          setChatHistory((prev) => [
-            ...prev,
-            {
+          
+          // Remove loading message and add error
+          setChatHistory((prev) => 
+            prev.filter(msg => msg.id !== loadingMessageId).concat({
               role: "assistant",
               content: "❌ Caption generation failed. Please try again.",
               timestamp: new Date().toISOString(),
-            },
-          ]);
+            })
+          );
         }
       } catch (error) {
         clearInterval(pollInterval);
         console.error("Caption poll error:", error);
+        
+        // Remove loading message and add error
+        setChatHistory((prev) => 
+          prev.filter(msg => msg.id !== loadingMessageId).concat({
+            role: "assistant",
+            content: "❌ Error checking caption status. Please try again.",
+            timestamp: new Date().toISOString(),
+          })
+        );
       }
     }, 2000);
   };
@@ -1038,6 +1058,19 @@ function VideoEditor() {
       return;
     }
 
+    // Add loading message to chat
+    const loadingMessageId = Date.now();
+    setChatHistory((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: `🎨 Applying ${CAPTION_STYLES[styleName].name} style to video...`,
+        timestamp: new Date().toISOString(),
+        isLoading: true,
+        id: loadingMessageId,
+      },
+    ]);
+
     setIsProcessing(true);
     setProcessingStatus("Applying caption style...");
 
@@ -1050,65 +1083,74 @@ function VideoEditor() {
 
       const jobId = response.data.job_id;
 
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `🎨 Applying ${CAPTION_STYLES[styleName].name} style to video...`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-
       // Poll for completion
-      pollCaptionBurnJob(jobId);
+      pollCaptionBurnJob(jobId, loadingMessageId, styleName);
     } catch (error) {
       console.error("Apply captions failed:", error);
       setIsProcessing(false);
-      setChatHistory((prev) => [
-        ...prev,
-        {
+      
+      // Remove loading message and add error
+      setChatHistory((prev) => 
+        prev.filter(msg => msg.id !== loadingMessageId).concat({
           role: "assistant",
           content: `❌ Failed to apply captions: ${error.message}`,
           timestamp: new Date().toISOString(),
-        },
-      ]);
+        })
+      );
     }
   };
 
-  const pollCaptionBurnJob = (jobId) => {
+  const pollCaptionBurnJob = (jobId, loadingMessageId, styleName) => {
     const pollInterval = setInterval(async () => {
       try {
         const response = await axios.get(`/api/v1/job/${jobId}`);
         const { status, progress, result } = response.data;
 
-        setProcessingStatus(`Burning captions into video... ${progress}%`);
-        setProcessingProgress(progress);
+        // Update loading message with progress
+        setChatHistory((prev) => 
+          prev.map(msg => 
+            msg.id === loadingMessageId 
+              ? { ...msg, content: `🎨 Applying ${CAPTION_STYLES[styleName].name} style... ${Math.round(progress || 0)}%` }
+              : msg
+          )
+        );
+
+        setProcessingStatus(`Burning captions into video... ${Math.round(progress || 0)}%`);
+        setProcessingProgress(progress || 0);
 
         if (status === "completed") {
           clearInterval(pollInterval);
 
-          // Update clip with new file
+          console.log("Caption burn completed, result:", result);
+
+          // Update clip with new captioned video URL
           const updatedClips = [...clips];
+          const newVideoUrl = result.new_file_path || result.file_path || selectedClip.url;
+          
           updatedClips[selectedClipIndex] = {
             ...updatedClips[selectedClipIndex],
-            url: result.new_file_path,
+            url: newVideoUrl,
             hasCaptions: true,
+            captionStyle: styleName,
           };
+          
+          console.log("Updating clip URL to:", newVideoUrl);
           setClips(updatedClips);
 
-          // Reload video
+          // Force video reload by resetting the video element
           if (videoRef.current) {
             videoRef.current.load();
+            videoRef.current.currentTime = 0;
           }
 
-          setChatHistory((prev) => [
-            ...prev,
-            {
+          // Remove loading message and add success message
+          setChatHistory((prev) => 
+            prev.filter(msg => msg.id !== loadingMessageId).concat({
               role: "assistant",
-              content: "✅ Captions applied successfully! Check the preview.",
+              content: "✅ Captions applied successfully! The video has been updated with captions.",
               timestamp: new Date().toISOString(),
-            },
-          ]);
+            })
+          );
 
           setIsProcessing(false);
           setProcessingProgress(0);
@@ -1116,20 +1158,30 @@ function VideoEditor() {
           clearInterval(pollInterval);
           setIsProcessing(false);
           setProcessingProgress(0);
-          setChatHistory((prev) => [
-            ...prev,
-            {
+          
+          // Remove loading message and add error
+          setChatHistory((prev) => 
+            prev.filter(msg => msg.id !== loadingMessageId).concat({
               role: "assistant",
-              content: "❌ Caption burning failed. Please try again.",
+              content: "❌ Failed to apply captions to video. Please try again.",
               timestamp: new Date().toISOString(),
-            },
-          ]);
+            })
+          );
         }
       } catch (error) {
         clearInterval(pollInterval);
         setIsProcessing(false);
         setProcessingProgress(0);
         console.error("Caption burn poll error:", error);
+        
+        // Remove loading message and add error
+        setChatHistory((prev) => 
+          prev.filter(msg => msg.id !== loadingMessageId).concat({
+            role: "assistant",
+            content: "❌ Error checking caption application status. Please try again.",
+            timestamp: new Date().toISOString(),
+          })
+        );
       }
     }, 2000);
   };
@@ -1288,8 +1340,12 @@ function VideoEditor() {
                           msg.isThinking &&
                             "animate-pulse text-gray-500 italic",
                           msg.isExecuting && "text-blue-600 font-medium",
+                          msg.isLoading && "flex items-center gap-2",
                         )}
                       >
+                        {msg.isLoading && (
+                          <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+                        )}
                         {msg.content}
                       </div>
                     </div>
