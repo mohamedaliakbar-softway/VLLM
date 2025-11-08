@@ -18,6 +18,7 @@ import wave
 from pathlib import Path
 from typing import Dict, List
 from google import genai
+from google.genai import types
 from config import settings
 
 # Try to import Vosk (offline speech recognition)
@@ -139,7 +140,7 @@ class CaptionGenerator:
         
         NOTE: Test this first! It might be good enough for your needs.
         """
-        # Upload audio file
+        # Read audio file
         with open(audio_path, 'rb') as f:
             audio_data = f.read()
         
@@ -157,8 +158,18 @@ Provide the most accurate timestamps possible."""
         response = self.client.models.generate_content(
             model=self.model,
             contents=[
-                {"parts": [{"inline_data": {"mime_type": "audio/wav", "data": audio_data}}]},
-                {"parts": [{"text": prompt}]}
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(
+                            inline_data=types.Blob(
+                                mime_type="audio/wav",
+                                data=audio_data
+                            )
+                        ),
+                        types.Part(text=prompt)
+                    ]
+                )
             ]
         )
         
