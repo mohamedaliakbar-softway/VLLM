@@ -40,6 +40,8 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
+                if not info:
+                    raise ValueError("Failed to extract video information")
                 duration = info.get('duration', 0)
                 
                 # Validate duration
@@ -93,6 +95,8 @@ class YouTubeProcessor:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get video info first
                 info = ydl.extract_info(youtube_url, download=False)
+                if not info:
+                    raise ValueError("Failed to extract video information")
                 duration = info.get('duration', 0)
                 
                 # Validate duration
@@ -151,6 +155,8 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
+                if not info:
+                    raise ValueError("Failed to extract video information")
                 
                 # Get transcript/subtitles
                 transcript_text = ""
@@ -247,6 +253,8 @@ class YouTubeProcessor:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
+                if not info:
+                    raise ValueError("Failed to extract video information")
                 video_url = info['url']  # Direct video URL
                 
                 # Download each segment using FFmpeg (parallel would be even faster)
@@ -263,7 +271,10 @@ class YouTubeProcessor:
                         '-ss', str(start_time),  # Start time
                         '-i', video_url,  # Input URL
                         '-t', str(duration),  # Duration
-                        '-c', 'copy',  # Copy streams (no re-encoding, super fast)
+                        '-c:v', 'libx264',  # Re-encode video to ensure proper MP4
+                        '-c:a', 'aac',  # Re-encode audio to AAC
+                        '-movflags', '+faststart',  # Enable fast start for web playback
+                        '-reset_timestamps', '1',  # Reset timestamps for proper duration
                         '-y',  # Overwrite output
                         str(output_path)
                     ]
