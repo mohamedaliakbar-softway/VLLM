@@ -131,7 +131,8 @@ function VideoEditor() {
     useState("bold_modern");
   const [showCaptionPreview, setShowCaptionPreview] = useState(false);
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
-  const [currentCaption, setCurrentCaption] = useState("");
+  const [currentCaption, setCurrentCaption] = useState('');
+  const [visibleCaptions, setVisibleCaptions] = useState([]);
 
   // Brand Logo states
   const [brandLogo, setBrandLogo] = useState(null);
@@ -1104,14 +1105,24 @@ function VideoEditor() {
     const updateCaption = () => {
       const time = videoRef.current?.currentTime || 0;
 
-      // Find current word
-      const currentWord = captions.words.find(
-        (word) => time >= word.start && time <= word.end,
+      // Find all words within a time window for scrolling effect
+      const timeWindow = 3; // Show words within 3 seconds
+      const currentWords = captions.words.filter(
+        word => time >= word.start - 1 && time <= word.end + timeWindow
       );
-
-      if (currentWord) {
-        setCurrentCaption(currentWord.word);
+      
+      // Find the current active word
+      const activeWordIndex = currentWords.findIndex(
+        word => time >= word.start && time <= word.end
+      );
+      
+      if (activeWordIndex !== -1) {
+        // Show current word and next word (2 lines visible)
+        const visibleWords = currentWords.slice(activeWordIndex, activeWordIndex + 2);
+        setVisibleCaptions(visibleWords);
+        setCurrentCaption(currentWords[activeWordIndex].word);
       } else {
+        setVisibleCaptions([]);
         setCurrentCaption("");
       }
     };

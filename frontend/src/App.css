@@ -112,22 +112,68 @@ video {
    LIVE CAPTION PREVIEW OVERLAY
    ============================================ */
 
-/* Base Caption Overlay */
-.caption-overlay {
+/* Caption Container - holds 2 lines with overflow hidden */
+.caption-overlay-container {
   position: absolute;
   bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
+  width: 80%;
+  max-width: 80%;
+  height: 150px;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 60%,
+    rgba(0, 0, 0, 0.5) 80%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 60%,
+    rgba(0, 0, 0, 0.5) 80%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* Scroll wrapper for caption animations */
+.caption-scroll-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Base Caption Overlay */
+.caption-overlay {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
   padding: 0.5rem 1rem;
   border-radius: 8px;
   font-weight: 700;
   text-align: center;
-  max-width: 80%;
+  width: 100%;
   word-wrap: break-word;
-  animation: captionFadeIn 0.3s ease;
   pointer-events: none;
   line-height: 1.3;
+  transition: all 0.3s ease-out;
+}
+
+/* Active caption (current word being spoken) */
+.caption-overlay.caption-active {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Next caption (upcoming word) */
+.caption-overlay.caption-next {
+  opacity: 0.4;
+  transform: translateX(-50%) scale(0.9);
 }
 
 /* Bold Modern Caption Style */
@@ -401,58 +447,6 @@ video {
   }
   40% {
     opacity: 0.7;
-    transform: translateY(0);
-  }
-}
-
-/* ============================================
-   LOADING STEPS LIST WITH SCROLLING EFFECT
-   ============================================ */
-
-/* Wrapper for loading steps - shows only 2 lines with blur at bottom */
-.loading-steps-wrapper {
-  position: relative;
-  height: 120px;
-  overflow: hidden;
-  mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 1) 50%,
-    rgba(0, 0, 0, 0.7) 70%,
-    rgba(0, 0, 0, 0.3) 85%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 1) 50%,
-    rgba(0, 0, 0, 0.7) 70%,
-    rgba(0, 0, 0, 0.3) 85%,
-    rgba(0, 0, 0, 0) 100%
-  );
-}
-
-/* Scroll container */
-.loading-steps-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-/* Individual loading step item */
-.loading-step-item {
-  min-height: 50px;
-  animation: slideUp 0.5s ease-out;
-}
-
-/* Slide up animation when new step appears */
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
