@@ -116,21 +116,21 @@ class VideoClipper:
                     output_filename = f"{video_id}_h_{idx}.mp4"
                 output_path = self.output_dir / output_filename
                 
-                # Export clip with high quality settings for direct upload
+                # Export clip with optimized settings for fast encoding and social media quality
                 clip.write_videofile(
                     str(output_path),
                     codec='libx264',
                     audio_codec='aac',
-                    preset='slow',  # Better quality, slower encoding
-                    bitrate='8000k',  # Higher bitrate for better quality
+                    preset='veryfast',  # 3-5x faster than 'slow', still good quality
+                    bitrate='4000k',  # Optimal for social media (was 8000k - overkill)
                     fps=clip.fps if clip.fps else 30,
-                    audio_bitrate='192k',  # High quality audio
-                    threads=4,  # Use multiple threads for faster encoding
+                    audio_bitrate='128k',  # Sufficient for social media (was 192k)
+                    threads=8,  # Use more threads for faster encoding (was 4)
                     ffmpeg_params=[
-                        '-crf', '18',  # High quality (lower = better, 18 is visually lossless)
+                        '-crf', '23',  # Good quality, much faster (was 18 - near lossless, slow)
                         '-pix_fmt', 'yuv420p',  # Compatible format
                         '-movflags', '+faststart',  # Enable streaming
-                        '-profile:v', 'high',  # H.264 high profile
+                        '-profile:v', 'main',  # Main profile (was high - unnecessary for shorts)
                         '-level', '4.0',  # H.264 level
                     ],
                     logger=None  # Suppress moviepy logs
