@@ -12,9 +12,11 @@ An AI-powered SaaS application that automatically creates engaging 15-30 second 
 ## Key Features
 - Direct YouTube URL processing (no manual download needed for analysis)
 - AI-powered highlight detection with engagement scoring
+- **Conversational AI video editing**: Chat with AI agent to modify videos using natural language commands
 - Automatic video clipping for multiple social platforms
 - Supports YouTube Shorts, Instagram Reels, Facebook, LinkedIn, WhatsApp formats
 - Generates up to 3 optimized shorts per video
+- Real-time video editing: trim, shorten, speed adjust, split clips via AI chat
 
 ## Setup Status
 ✅ Python 3.11 installed
@@ -35,6 +37,7 @@ An AI-powered SaaS application that automatically creates engaging 15-30 second 
 - `GET /api/v1/download/{filename}` - Download generated short
 - `DELETE /api/v1/shorts/{filename}` - Delete a short
 - `GET /api/v1/progress/{job_id}` - Real-time progress via Server-Sent Events
+- **`POST /api/v1/chat`** - Conversational AI agent for video editing (NEW)
 
 ## Environment Configuration
 The application uses Replit Secrets and environment variables:
@@ -59,7 +62,8 @@ Other settings are configured in `config.py` with sensible defaults:
 ├── services/                  # Service layer
 │   ├── youtube_processor.py  # YouTube video download
 │   ├── gemini_analyzer.py    # AI video analysis
-│   ├── video_clipper.py      # Video clipping
+│   ├── video_agent.py         # AI agent for conversational video editing (NEW)
+│   ├── video_clipper.py      # Video clipping & editing operations
 │   └── smart_cropper.py      # Smart video cropping
 ├── frontend/                  # React + Vite frontend
 │   ├── src/
@@ -115,6 +119,16 @@ Other settings are configured in `config.py` with sensible defaults:
 7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **AI AGENT FOR CONVERSATIONAL VIDEO EDITING**
+  - **Created VideoEditingAgent**: AI-powered agent that uses Gemini to understand natural language commands
+  - **Video editing operations**: Added trim, shorten, extend, speed adjust, and split operations using FFmpeg
+  - **New chat endpoint**: `/api/v1/chat` for conversational video editing with agent orchestration
+  - **Frontend integration**: Chat UI now calls backend AI agent and updates clips in real-time
+  - **Quick action buttons**: All quick actions route through AI agent for automated processing
+  - **Supported commands**: "shorten to 20 seconds", "speed up 2x", "trim first 5 seconds", "split at 10 seconds", etc.
+  - **Smart file handling**: Backend derives file paths from filenames and handles clip updates seamlessly
+  - **Result**: Users can now edit videos by simply chatting with AI instead of manual editing
+
 - November 8, 2025: **CRITICAL BUG FIX - YouTube Rate Limiting Resolved**
   - **Fixed 429 errors**: Added retry logic with exponential backoff for transcript extraction
   - **Root cause**: YouTube's API was rate-limiting transcript requests, causing failures

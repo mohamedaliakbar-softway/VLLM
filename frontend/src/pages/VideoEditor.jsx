@@ -550,72 +550,50 @@ function VideoEditor() {
       ...prev,
       {
         role: "assistant",
-        content: "🤔 Analyzing your request...",
+        content: "🤔 Processing your request...",
         timestamp: new Date().toISOString(),
         isThinking: true,
       },
     ]);
 
     try {
-      // Send message to Gemini AI agent
-      const response = await axios.post("/api/v1/ai-agent/execute", {
+      // Call the new chat API with clips state
+      const response = await axios.post("/api/v1/chat", {
         message: userMessage,
-        context: {
-          clips,
-          selectedClipIndex,
-          selectedClip,
-          videoInfo: {
-            youtubeUrl,
-            videoId,
-          },
-        },
+        clips: clips,
+        selected_clip_index: selectedClipIndex,
       });
 
-      const {
-        action,
-        parameters,
-        message: aiMessage,
-        updatedClips,
-      } = response.data;
+      const { clips: updatedClips, response: aiResponse, success } = response.data;
 
       // Remove thinking message
       setChatHistory((prev) => prev.filter((msg) => !msg.isThinking));
 
-      // IMMEDIATELY show AI's conversational reply (Copilot-like)
+      // Show AI's response
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: aiMessage || "Got it! Working on that...",
+          content: aiResponse || "Done!",
           timestamp: new Date().toISOString(),
         },
       ]);
 
-      // THEN execute the action in the background
-      if (action && parameters) {
-        // Show what action is being performed
-        setChatHistory((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `🔄 Executing: ${action}...`,
-            timestamp: new Date().toISOString(),
-            isExecuting: true,
-          },
-        ]);
-
-        await executeAiAction(action, parameters, updatedClips);
-
-        // Remove executing message and show completion
-        setChatHistory((prev) => prev.filter((msg) => !msg.isExecuting));
-        setChatHistory((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "✅ Done! Anything else I can help with?",
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+      // Update clips if they changed
+      if (success && updatedClips) {
+        setClips(updatedClips);
+        
+        // Force video reload if the selected clip changed
+        if (videoRef.current && updatedClips[selectedClipIndex]) {
+          const newClip = updatedClips[selectedClipIndex];
+          const clipPath = newClip.file_path || newClip.path;
+          if (clipPath && !clipPath.startsWith('http')) {
+            // Update video source to the new file
+            const videoUrl = `/api/v1/download/${clipPath.split('/').pop()}`;
+            videoRef.current.src = videoUrl;
+            videoRef.current.load();
+          }
+        }
       }
     } catch (error) {
       // Remove thinking message
@@ -629,7 +607,7 @@ function VideoEditor() {
           timestamp: new Date().toISOString(),
         },
       ]);
-      console.error("AI Agent error:", error);
+      console.error("Chat error:", error);
     } finally {
       setIsAiThinking(false);
     }

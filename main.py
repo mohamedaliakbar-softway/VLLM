@@ -19,7 +19,7 @@ import os
 from config import settings
 from services.youtube_processor import YouTubeProcessor
 from services.gemini_analyzer import GeminiAnalyzer
-from services.ai_agent import VideoEditingAgent
+from services.video_agent import VideoEditingAgent
 from services.video_clipper import VideoClipper
 from services.social_publisher import SocialPublisher, build_post_text
 from services.progress_tracker import progress_tracker
@@ -1181,38 +1181,193 @@ async def get_video_categories(region_code: str = "US"):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# AI Agent Endpoint
-class AIAgentRequest(BaseModel):
-    """Request model for AI agent commands."""
+# AI Agent Chat Endpoint
+class ChatRequest(BaseModel):
+    """Request model for AI chat commands."""
     message: str
-    context: dict
+    clips: List[dict]
+    selected_clip_index: Optional[int] = 0
+    project_id: Optional[str] = None
 
 
-@app.post("/api/v1/ai-agent/execute")
-async def execute_ai_command(request: AIAgentRequest):
+@app.post("/api/v1/chat")
+async def chat_with_ai(request: ChatRequest):
     """
-    Execute AI agent command for video editing.
+    Chat with AI agent for conversational video editing.
     
     Args:
         message: User's natural language command
-        context: Current editing context (clips, selected clip, etc.)
+        clips: Current list of video clips
+        selected_clip_index: Index of currently selected clip
+        project_id: Optional project ID for context
     
     Returns:
-        Action to execute and response message
+        Updated clips and AI response
     """
     try:
-        result = ai_agent.parse_and_execute(
-            message=request.message,
-            context=request.context
+        # Parse the command using AI agent
+        result = ai_agent.process_command(
+            user_message=request.message,
+            clips=request.clips,
+            selected_clip_index=request.selected_clip_index
         )
         
-        return result
+        if not result.get("success", False):
+            return {
+                "clips": request.clips,
+                "response": result.get("response", "Sorry, I couldn't understand that."),
+                "success": False
+            }
+        
+        # Get operations to execute
+        operations = result.get("operations", [])
+        updated_clips = request.clips.copy()
+        
+        # Execute each operation
+        for op in operations:
+            op_type = op.get("type", "none")
+            clip_index = op.get("clip_index", request.selected_clip_index)
+            params = op.get("parameters", {})
+            
+            # Validate clip index
+            if clip_index < 0 or clip_index >= len(updated_clips):
+                logger.warning(f"Invalid clip index {clip_index}, skipping operation")
+                continue
+            
+            clip = updated_clips[clip_index]
+            
+            # Try to get file path from various possible fields
+            clip_path = clip.get("file_path") or clip.get("path")
+            
+            # If no path, try to derive from filename
+            if not clip_path:
+                filename = clip.get("filename")
+                if filename:
+                    # Construct path from output directory + filename
+                    clip_path = str(Path(settings.output_dir) / filename)
+                    logger.info(f"Derived clip path from filename: {clip_path}")
+            
+            # Validate file exists
+            if not clip_path:
+                logger.error(f"Clip {clip_index} has no file path or filename: {clip}")
+                continue
+                
+            if not Path(clip_path).exists():
+                logger.error(f"Clip file not found: {clip_path} (clip data: {clip})")
+                continue
+            
+            logger.info(f"Processing {op_type} operation on clip {clip_index}: {clip_path}")
+            
+            try:
+                # Execute operation based on type
+                if op_type == "trim":
+                    new_start = params.get("new_start")
+                    new_end = params.get("new_end")
+                    new_path = video_clipper.trim_clip(
+                        clip_path, 
+                        new_start=new_start, 
+                        new_end=new_end
+                    )
+                    # Update both file_path and filename
+                    updated_clips[clip_index]["file_path"] = new_path
+                    updated_clips[clip_index]["path"] = new_path
+                    updated_clips[clip_index]["filename"] = Path(new_path).name
+                    updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(new_path).name}"
+                    if new_start is not None:
+                        updated_clips[clip_index]["start_time"] = new_start
+                    if new_end is not None:
+                        updated_clips[clip_index]["end_time"] = new_end
+                        if new_start is not None:
+                            updated_clips[clip_index]["duration"] = new_end - new_start
+                
+                elif op_type == "shorten":
+                    target_duration = params.get("target_duration")
+                    reduce_by = params.get("reduce_by")
+                    new_path = video_clipper.adjust_duration(
+                        clip_path,
+                        target_duration=target_duration,
+                        reduce_by=reduce_by
+                    )
+                    updated_clips[clip_index]["file_path"] = new_path
+                    updated_clips[clip_index]["path"] = new_path
+                    updated_clips[clip_index]["filename"] = Path(new_path).name
+                    updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(new_path).name}"
+                    if target_duration:
+                        updated_clips[clip_index]["duration"] = target_duration
+                
+                elif op_type == "extend":
+                    extend_by = params.get("extend_by")
+                    target_duration = params.get("target_duration")
+                    new_path = video_clipper.adjust_duration(
+                        clip_path,
+                        target_duration=target_duration,
+                        extend_by=extend_by
+                    )
+                    updated_clips[clip_index]["file_path"] = new_path
+                    updated_clips[clip_index]["path"] = new_path
+                    updated_clips[clip_index]["filename"] = Path(new_path).name
+                    updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(new_path).name}"
+                    if target_duration:
+                        updated_clips[clip_index]["duration"] = target_duration
+                
+                elif op_type == "speed_adjust":
+                    speed_factor = params.get("speed_factor", 1.0)
+                    new_path = video_clipper.change_speed(clip_path, speed_factor)
+                    updated_clips[clip_index]["file_path"] = new_path
+                    updated_clips[clip_index]["path"] = new_path
+                    updated_clips[clip_index]["filename"] = Path(new_path).name
+                    updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(new_path).name}"
+                    # Adjust duration based on speed
+                    current_duration = clip.get("duration", 30)
+                    updated_clips[clip_index]["duration"] = current_duration / speed_factor
+                
+                elif op_type == "split":
+                    split_at = params.get("split_at", 0)
+                    part1_path, part2_path = video_clipper.split_clip(clip_path, split_at)
+                    # Replace original clip with first part
+                    updated_clips[clip_index]["file_path"] = part1_path
+                    updated_clips[clip_index]["path"] = part1_path
+                    updated_clips[clip_index]["filename"] = Path(part1_path).name
+                    updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(part1_path).name}"
+                    updated_clips[clip_index]["duration"] = split_at
+                    # Insert second part after current clip
+                    new_clip = clip.copy()
+                    new_clip["file_path"] = part2_path
+                    new_clip["path"] = part2_path
+                    new_clip["filename"] = Path(part2_path).name
+                    new_clip["download_url"] = f"/api/v1/download/{Path(part2_path).name}"
+                    new_clip["title"] = f"{clip.get('title', 'Clip')} - Part 2"
+                    new_clip["start_time"] = clip.get("start_time", 0) + split_at
+                    updated_clips.insert(clip_index + 1, new_clip)
+                
+                elif op_type == "delete":
+                    # Remove clip from list
+                    updated_clips.pop(clip_index)
+                
+                elif op_type == "reorder":
+                    new_index = params.get("new_index", clip_index)
+                    if 0 <= new_index < len(updated_clips):
+                        clip_to_move = updated_clips.pop(clip_index)
+                        updated_clips.insert(new_index, clip_to_move)
+                
+                logger.info(f"Executed {op_type} operation on clip {clip_index}")
+            
+            except Exception as op_error:
+                logger.error(f"Error executing {op_type} operation: {str(op_error)}")
+                # Continue with other operations even if one fails
+                continue
+        
+        return {
+            "clips": updated_clips,
+            "response": result.get("response", "Done!"),
+            "success": True
+        }
         
     except Exception as e:
-        logger.error(f"AI Agent error: {str(e)}")
+        logger.error(f"Chat error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"AI Agent error: {str(e)}"
+            detail=f"Chat error: {str(e)}"
         )
 
 # ============================================================================

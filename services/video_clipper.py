@@ -437,6 +437,221 @@ class VideoClipper:
             logger.error(f"Error processing video: {str(e)}")
             raise
     
+    def trim_clip(
+        self, 
+        input_path: str, 
+        new_start: Optional[float] = None,
+        new_end: Optional[float] = None,
+        output_suffix: str = "_trimmed"
+    ) -> str:
+        """
+        Trim a video clip to new start/end times using FFmpeg.
+        
+        Args:
+            input_path: Path to input video file
+            new_start: New start time in seconds (None = keep original start)
+            new_end: New end time in seconds (None = keep original end)
+            output_suffix: Suffix to add to output filename
+            
+        Returns:
+            Path to trimmed video file
+        """
+        try:
+            input_file = Path(input_path)
+            output_path = input_file.parent / f"{input_file.stem}{output_suffix}{input_file.suffix}"
+            
+            # Build FFmpeg command
+            cmd = ["ffmpeg", "-y", "-i", str(input_path)]
+            
+            if new_start is not None:
+                cmd.extend(["-ss", str(new_start)])
+            
+            if new_end is not None:
+                if new_start is not None:
+                    duration = new_end - new_start
+                else:
+                    duration = new_end
+                cmd.extend(["-t", str(duration)])
+            
+            cmd.extend([
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-preset", "fast",
+                str(output_path)
+            ])
+            
+            logger.info(f"Trimming video: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            logger.info(f"Trimmed video saved to: {output_path}")
+            return str(output_path)
+        
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg trim error: {e.stderr}")
+            raise ValueError(f"Failed to trim video: {e.stderr}")
+        except Exception as e:
+            logger.error(f"Error trimming clip: {str(e)}")
+            raise
+    
+    def change_speed(
+        self, 
+        input_path: str, 
+        speed_factor: float,
+        output_suffix: str = "_speed"
+    ) -> str:
+        """
+        Change playback speed of a video using FFmpeg.
+        
+        Args:
+            input_path: Path to input video file
+            speed_factor: Speed multiplier (2.0 = 2x speed, 0.5 = half speed)
+            output_suffix: Suffix to add to output filename
+            
+        Returns:
+            Path to speed-adjusted video file
+        """
+        try:
+            input_file = Path(input_path)
+            output_path = input_file.parent / f"{input_file.stem}{output_suffix}{input_file.suffix}"
+            
+            # Calculate PTS (presentation timestamp) multiplier
+            # For 2x speed, we need pts=0.5 (half the timestamps)
+            pts_multiplier = 1.0 / speed_factor
+            
+            # Calculate audio tempo
+            # For 2x speed, we need atempo=2.0
+            audio_tempo = speed_factor
+            
+            # Build complex filter for video and audio
+            video_filter = f"setpts={pts_multiplier}*PTS"
+            
+            # atempo only supports 0.5 to 2.0, so we may need to chain
+            audio_filters = []
+            remaining_tempo = audio_tempo
+            while remaining_tempo > 2.0:
+                audio_filters.append("atempo=2.0")
+                remaining_tempo /= 2.0
+            while remaining_tempo < 0.5:
+                audio_filters.append("atempo=0.5")
+                remaining_tempo /= 0.5
+            if remaining_tempo != 1.0:
+                audio_filters.append(f"atempo={remaining_tempo}")
+            
+            audio_filter = ",".join(audio_filters) if audio_filters else "anull"
+            
+            cmd = [
+                "ffmpeg", "-y", "-i", str(input_path),
+                "-filter:v", video_filter,
+                "-filter:a", audio_filter,
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-preset", "fast",
+                str(output_path)
+            ]
+            
+            logger.info(f"Changing speed: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            logger.info(f"Speed-adjusted video saved to: {output_path}")
+            return str(output_path)
+        
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg speed change error: {e.stderr}")
+            raise ValueError(f"Failed to change speed: {e.stderr}")
+        except Exception as e:
+            logger.error(f"Error changing speed: {str(e)}")
+            raise
+    
+    def adjust_duration(
+        self,
+        input_path: str,
+        target_duration: Optional[float] = None,
+        reduce_by: Optional[float] = None,
+        extend_by: Optional[float] = None,
+        output_suffix: str = "_adjusted"
+    ) -> str:
+        """
+        Adjust video duration by trimming or speeding up.
+        
+        Args:
+            input_path: Path to input video file
+            target_duration: Target duration in seconds
+            reduce_by: Amount to reduce duration by (in seconds)
+            extend_by: Amount to extend duration by (in seconds)
+            output_suffix: Suffix to add to output filename
+            
+        Returns:
+            Path to duration-adjusted video file
+        """
+        try:
+            # Get current duration
+            video = VideoFileClip(input_path)
+            current_duration = video.duration
+            video.close()
+            
+            # Calculate new duration
+            if target_duration is not None:
+                new_duration = target_duration
+            elif reduce_by is not None:
+                new_duration = max(1, current_duration - reduce_by)  # Minimum 1 second
+            elif extend_by is not None:
+                # For extending, we'll slow down the video
+                new_duration = current_duration + extend_by
+            else:
+                raise ValueError("Must specify target_duration, reduce_by, or extend_by")
+            
+            # Decide strategy
+            if new_duration < current_duration:
+                # Need to shorten - trim from the end
+                logger.info(f"Shortening video from {current_duration}s to {new_duration}s by trimming")
+                return self.trim_clip(input_path, new_start=0, new_end=new_duration, output_suffix=output_suffix)
+            elif new_duration > current_duration:
+                # Need to extend - slow down playback
+                speed_factor = current_duration / new_duration
+                logger.info(f"Extending video from {current_duration}s to {new_duration}s by slowing to {speed_factor}x")
+                return self.change_speed(input_path, speed_factor, output_suffix=output_suffix)
+            else:
+                # No change needed
+                logger.info("Duration already matches target, no adjustment needed")
+                return input_path
+        
+        except Exception as e:
+            logger.error(f"Error adjusting duration: {str(e)}")
+            raise
+    
+    def split_clip(
+        self,
+        input_path: str,
+        split_at: float,
+        output_suffix_1: str = "_part1",
+        output_suffix_2: str = "_part2"
+    ) -> Tuple[str, str]:
+        """
+        Split a video clip at a specific timestamp.
+        
+        Args:
+            input_path: Path to input video file
+            split_at: Time in seconds to split at
+            output_suffix_1: Suffix for first part
+            output_suffix_2: Suffix for second part
+            
+        Returns:
+            Tuple of (part1_path, part2_path)
+        """
+        try:
+            # Create first part (0 to split_at)
+            part1_path = self.trim_clip(input_path, new_start=0, new_end=split_at, output_suffix=output_suffix_1)
+            
+            # Create second part (split_at to end)
+            part2_path = self.trim_clip(input_path, new_start=split_at, output_suffix=output_suffix_2)
+            
+            logger.info(f"Split video at {split_at}s into: {part1_path} and {part2_path}")
+            return (part1_path, part2_path)
+        
+        except Exception as e:
+            logger.error(f"Error splitting clip: {str(e)}")
+            raise
+    
     def cleanup(self, file_path: str):
         """Remove output video file."""
         try:
