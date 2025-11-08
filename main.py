@@ -25,6 +25,8 @@ from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
 from models import Project, Short, Publication, AccountToken
 from migrate import main as run_migrations
+from utils.logging_decorator import log_async_execution, StepLogger
+import traceback
 
 import auth
 from utils.logging_decorator import log_async_execution, StepLogger
