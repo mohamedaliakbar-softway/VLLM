@@ -18,6 +18,9 @@ class YouTubeProcessor:
     def __init__(self):
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        self.cookies_file = getattr(settings, 'youtube_cookies_file', None)
+        self.use_browser_cookies = getattr(settings, 'youtube_use_browser_cookies', True)
+        self.browser = getattr(settings, 'youtube_browser', 'chrome').lower()
     
     def get_video_info(self, youtube_url: str, video_id: Optional[str] = None) -> dict:
         """
@@ -34,10 +37,10 @@ class YouTubeProcessor:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
@@ -84,12 +87,12 @@ class YouTubeProcessor:
             
             output_path = self.temp_dir / f"{video_id}.mp4"
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': str(output_path),
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get video info first
@@ -141,14 +144,14 @@ class YouTubeProcessor:
             if not video_id:
                 video_id = self._extract_video_id(youtube_url)
             
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'writesubtitles': True,
                 'writeautomaticsub': True,
                 'subtitleslangs': ['en', 'en-US', 'en-GB'],  # Broader language fallback
                 'skip_download': True,
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
@@ -257,11 +260,11 @@ class YouTubeProcessor:
             downloaded_segments = []
             
             # Get video stream URL without downloading
-            ydl_opts = {
+            ydl_opts = self._get_ydl_opts({
                 'format': 'best[ext=mp4]/best',
                 'quiet': True,
                 'no_warnings': True,
-            }
+            })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
@@ -373,6 +376,38 @@ class YouTubeProcessor:
         content = re.sub(r'\s+', ' ', content)
         
         return content.strip()
+    
+    def _get_ydl_opts(self, base_opts: dict = None) -> dict:
+        """
+        Get yt-dlp options with cookie support to bypass bot detection.
+        
+        Args:
+            base_opts: Base options dictionary
+            
+        Returns:
+            Options dictionary with cookies configured
+        """
+        opts = base_opts.copy() if base_opts else {}
+        
+        # Priority 1: Use cookies file if specified and exists
+        if self.cookies_file and os.path.exists(self.cookies_file):
+            opts['cookiefile'] = self.cookies_file
+            logger.info(f"Using cookies file: {self.cookies_file}")
+        # Priority 2: Use browser cookies if enabled
+        elif self.use_browser_cookies:
+            try:
+                # Try to use browser cookies
+                valid_browsers = ['chrome', 'firefox', 'safari', 'edge', 'opera', 'brave']
+                if self.browser in valid_browsers:
+                    opts['cookiesfrombrowser'] = (self.browser,)
+                    logger.info(f"Using cookies from {self.browser} browser")
+                else:
+                    logger.warning(f"Invalid browser '{self.browser}', defaulting to chrome")
+                    opts['cookiesfrombrowser'] = ('chrome',)
+            except Exception as e:
+                logger.warning(f"Failed to configure browser cookies: {e}. Continuing without cookies.")
+        
+        return opts
     
     def _extract_video_id(self, url: str) -> str:
         """Extract video ID from YouTube URL."""
