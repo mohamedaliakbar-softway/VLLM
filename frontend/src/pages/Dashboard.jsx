@@ -1,0 +1,179 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Video, Play, Trash2, Download, Calendar, Clock, TrendingUp, ArrowLeft } from 'lucide-react';
+import axios from 'axios';
+
+function Dashboard() {
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalVideos: 0,
+    totalShorts: 0,
+    totalViews: 0,
+    avgEngagement: 0
+  });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Mock data for demonstration
+    setTimeout(() => {
+      setVideos([
+        {
+          id: 1,
+          title: 'Marketing Tips for Beginners',
+          thumbnail: 'https://via.placeholder.com/300x200',
+          createdAt: '2024-01-15',
+          shorts: 3,
+          views: 1500,
+          engagement: 87
+        },
+        {
+          id: 2,
+          title: 'Product Launch Strategy',
+          thumbnail: 'https://via.placeholder.com/300x200',
+          createdAt: '2024-01-14',
+          shorts: 2,
+          views: 890,
+          engagement: 92
+        },
+      ]);
+      setStats({
+        totalVideos: 2,
+        totalShorts: 5,
+        totalViews: 2390,
+        avgEngagement: 89.5
+      });
+      setLoading(false);
+    }, 500);
+  }, []);
+
+  const handleDelete = async (videoId) => {
+    if (confirm('Are you sure you want to delete this video and all its shorts?')) {
+      setVideos(videos.filter(v => v.id !== videoId));
+    }
+  };
+
+  return (
+    <div className="dashboard-container">
+      <div className="dashboard-header">
+        <button className="back-btn" onClick={() => navigate('/')}>
+          <ArrowLeft size={20} />
+          Back to Home
+        </button>
+        <h1>My Dashboard</h1>
+        <p className="dashboard-subtitle">Manage your generated video shorts</p>
+      </div>
+
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Video size={24} />
+          </div>
+          <div className="stat-content">
+            <p className="stat-label">Total Videos</p>
+            <p className="stat-value">{stats.totalVideos}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Play size={24} />
+          </div>
+          <div className="stat-content">
+            <p className="stat-label">Generated Shorts</p>
+            <p className="stat-value">{stats.totalShorts}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <TrendingUp size={24} />
+          </div>
+          <div className="stat-content">
+            <p className="stat-label">Total Views</p>
+            <p className="stat-value">{stats.totalViews.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <TrendingUp size={24} />
+          </div>
+          <div className="stat-content">
+            <p className="stat-label">Avg Engagement</p>
+            <p className="stat-value">{stats.avgEngagement}%</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="videos-section">
+        <h2>Your Videos</h2>
+        {loading ? (
+          <div className="loading-state">
+            <div className="spinner"></div>
+            <p>Loading your videos...</p>
+          </div>
+        ) : videos.length === 0 ? (
+          <div className="empty-state">
+            <Video size={64} />
+            <p>No videos yet</p>
+            <button onClick={() => navigate('/')} className="create-btn">
+              Create Your First Short
+            </button>
+          </div>
+        ) : (
+          <div className="videos-grid">
+            {videos.map((video) => (
+              <div key={video.id} className="video-card">
+                <div className="video-thumbnail">
+                  <img src={video.thumbnail} alt={video.title} />
+                  <div className="video-overlay">
+                    <button className="play-btn">
+                      <Play size={32} />
+                    </button>
+                  </div>
+                </div>
+                <div className="video-info">
+                  <h3>{video.title}</h3>
+                  <div className="video-meta">
+                    <span>
+                      <Calendar size={14} />
+                      {new Date(video.createdAt).toLocaleDateString()}
+                    </span>
+                    <span>
+                      <Play size={14} />
+                      {video.shorts} shorts
+                    </span>
+                  </div>
+                  <div className="video-stats">
+                    <div className="stat">
+                      <span className="stat-label">Views</span>
+                      <span className="stat-value">{video.views}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="stat-label">Engagement</span>
+                      <span className="stat-value">{video.engagement}%</span>
+                    </div>
+                  </div>
+                  <div className="video-actions">
+                    <button className="action-btn" onClick={() => navigate('/video-editor', { state: { videoId: video.id } })}>
+                      <Play size={16} />
+                      Edit
+                    </button>
+                    <button className="action-btn">
+                      <Download size={16} />
+                      Download
+                    </button>
+                    <button className="action-btn danger" onClick={() => handleDelete(video.id)}>
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default Dashboard;
