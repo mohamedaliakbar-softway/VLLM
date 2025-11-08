@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 function Landing() {
+  console.log("hi");
+  
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,12 +89,6 @@ function Landing() {
               <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</a>
             </div>
             <div className="flex items-center gap-3">
-<<<<<<< HEAD
-              <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
-                <Sparkles className="h-4 w-4" />
-                Get Started
-              </Button>
-=======
               {authLoading ? (
                 <div className="h-9 w-20 bg-gray-100 animate-pulse rounded-md"></div>
               ) : user ? (
@@ -129,7 +125,6 @@ function Landing() {
                   </Button>
                 </>
               )}
->>>>>>> bd02fd3 (Add user authentication and management features to the application)
             </div>
           </div>
         </div>
