@@ -205,7 +205,6 @@ function VideoEditor() {
           // Convert shorts to clips format
           const newClips = generatedShorts.map((short, idx) => ({
             id: idx + 1,
-            short_id: short.short_id, // Store the database short_id for publishing
             title: short.title || `Highlight ${idx + 1}`,
             startTime: formatTime(short.start_time),
             endTime: formatTime(short.end_time),
@@ -663,14 +662,10 @@ function VideoEditor() {
   };
 
   const handlePlatformToggle = (platform) => {
-    // Normalize platform names (x and twitter are the same)
-    const normalizedPlatform = platform === 'twitter' ? 'x' : platform;
-    const normalizedSelected = selectedPlatforms.map(p => p === 'twitter' ? 'x' : p);
-    
-    if (normalizedSelected.includes(normalizedPlatform)) {
-      setSelectedPlatforms(normalizedSelected.filter(p => p !== normalizedPlatform));
+    if (selectedPlatforms.includes(platform)) {
+      setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform));
     } else {
-      setSelectedPlatforms([...normalizedSelected, normalizedPlatform]);
+      setSelectedPlatforms([...selectedPlatforms, platform]);
     }
   };
 
@@ -693,55 +688,18 @@ function VideoEditor() {
       timestamp: new Date().toISOString()
     }]);
     
-    try {
-      // Get the selected clip (or first clip) to publish
-      const clipToPublish = selectedClip || clips[0];
-      if (!clipToPublish) {
-        throw new Error("No clip available for publishing");
-      }
-
-      // Get short_id from clip
-      const shortId = clipToPublish.short_id;
-      if (!shortId) {
-        throw new Error("Clip does not have a short_id. Please regenerate the video.");
-      }
-
-      // Call the share API
-      const response = await axios.post('/api/v1/share', {
-        short_id: shortId,
-        platforms: selectedPlatforms,
-        text: publishSettings.description || publishSettings.title || ""
-      });
-
-      if (response.data && response.data.publications) {
-        const successCount = response.data.publications.filter(p => p.status === 'queued' || p.status === 'processing').length;
-        const failedCount = response.data.publications.filter(p => p.status === 'failed').length;
-        
-        if (successCount > 0) {
+    // Simulate publishing
+    setTimeout(() => {
       setChatHistory(prev => [...prev, { 
         role: 'assistant', 
-            content: `✅ Publishing started for ${successCount} platform(s)! ${failedCount > 0 ? `${failedCount} failed. ` : ''}Check the dashboard for status updates.`,
+        content: `✅ Successfully published to ${selectedPlatforms.join(', ')}! Redirecting to dashboard...`,
         timestamp: new Date().toISOString()
       }]);
       
-          // Redirect to dashboard after a delay
       setTimeout(() => {
         navigate('/dashboard');
+      }, 1500);
     }, 2000);
-        } else {
-          throw new Error("All publications failed. Please check your account connections.");
-        }
-      } else {
-        throw new Error("Unexpected response from server");
-      }
-    } catch (error) {
-      setChatHistory(prev => [...prev, { 
-        role: 'assistant', 
-        content: `❌ Publishing failed: ${error.response?.data?.detail || error.message}. Please check your account connections and try again.`,
-        timestamp: new Date().toISOString()
-      }]);
-      console.error('Publishing error:', error);
-    }
   };
 
   const handleDuplicateClip = () => {
@@ -1686,29 +1644,6 @@ function VideoEditor() {
                         <p className="text-xs text-gray-500">9:16 • 90s max</p>
                       </div>
                       {selectedPlatforms.includes('facebook') && (
-                        <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card
-                  className={cn(
-                    "cursor-pointer transition-all",
-                    selectedPlatforms.includes('x') || selectedPlatforms.includes('twitter') ? "border-[#1E201E] border-2 bg-[#1E201E]/5" : "border-gray-200 hover:border-gray-300"
-                  )}
-                  onClick={() => handlePlatformToggle('x')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center">
-                        <Share2 className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-gray-900">Twitter / X</h4>
-                        <p className="text-xs text-gray-500">Video • 512MB max</p>
-                      </div>
-                      {(selectedPlatforms.includes('x') || selectedPlatforms.includes('twitter')) && (
                         <div className="w-6 h-6 bg-[#1E201E] rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
                       )}
                     </div>
