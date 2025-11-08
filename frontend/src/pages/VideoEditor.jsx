@@ -94,6 +94,9 @@ function VideoEditor() {
   const [isApplyingLogo, setIsApplyingLogo] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Video container state - starts landscape, becomes portrait when video loads
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+
   // Available caption styles
   const CAPTION_STYLES = {
     bold_modern: {
@@ -1509,57 +1512,62 @@ function VideoEditor() {
                       <p className="text-lg font-semibold text-white mt-4">{Math.round(processingProgress)}%</p>
                     </div>
                     
-                    <div className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6">
-                      <div className="space-y-3">
-                        {loadingSteps.map((step, index) => {
-                          const isCompleted = currentLoadingStep > index;
-                          const isCurrent = currentLoadingStep === index;
-                          const isUpcoming = currentLoadingStep < index;
-                          
-                          return (
-                            <div
-                              key={step.id}
-                              className={`
-                                transition-all duration-500 transform
-                                ${isCurrent ? 'scale-105' : 'scale-100'}
-                                ${isUpcoming && index === currentLoadingStep + 1 ? 'opacity-50' : ''}
-                                ${isUpcoming && index > currentLoadingStep + 1 ? 'opacity-30' : ''}
-                              `}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className={`
-                                  w-5 h-5 rounded-full flex items-center justify-center transition-all duration-500
-                                  ${isCompleted ? 'bg-green-500' : isCurrent ? 'bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse' : 'bg-white/20'}
-                                `}>
-                                  {isCompleted && (
-                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                  {isCurrent && (
-                                    <div className="w-2 h-2 bg-white rounded-full"></div>
-                                  )}
-                                </div>
-                                <span className={`
-                                  text-sm font-medium transition-all duration-500
-                                  ${isCompleted ? 'text-gray-400 line-through' : isCurrent ? 'text-white' : 'text-gray-500'}
-                                `}>
-                                  {step.text}
-                                </span>
-                              </div>
-                              {isCurrent && (
-                                <div className="ml-8 mt-1">
-                                  <div className="h-1 bg-white/20 rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-1000"
-                                      style={{ width: `${(processingProgress % 12.5) * 8}%` }}
-                                    ></div>
+                    <div className="bg-transparent rounded-2xl p-6">
+                      <div className="loading-steps-wrapper">
+                        <div className="loading-steps-scroll">
+                          {loadingSteps.map((step, index) => {
+                            const isCompleted = currentLoadingStep > index;
+                            const isCurrent = currentLoadingStep === index;
+                            const isUpcoming = currentLoadingStep < index;
+                            
+                            // Only show current step and next step (2 lines visible)
+                            const shouldShow = index === currentLoadingStep || index === currentLoadingStep + 1;
+                            if (!shouldShow) return null;
+                            
+                            return (
+                              <div
+                                key={step.id}
+                                className={`
+                                  loading-step-item transition-all duration-500 transform
+                                  ${isCurrent ? 'scale-105' : 'scale-100'}
+                                  ${index === currentLoadingStep + 1 ? 'opacity-60' : 'opacity-100'}
+                                `}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`
+                                    w-5 h-5 rounded-full flex items-center justify-center transition-all duration-500
+                                    ${isCompleted ? 'bg-green-500' : isCurrent ? 'bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse' : 'bg-white/20'}
+                                  `}>
+                                    {isCompleted && (
+                                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                    {isCurrent && (
+                                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                                    )}
                                   </div>
+                                  <span className={`
+                                    text-sm font-medium transition-all duration-500
+                                    ${isCompleted ? 'text-gray-400 line-through' : isCurrent ? 'text-white' : 'text-gray-500'}
+                                  `}>
+                                    {step.text}
+                                  </span>
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                                {isCurrent && (
+                                  <div className="ml-8 mt-1">
+                                    <div className="h-1 bg-white/20 rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-1000"
+                                        style={{ width: `${(processingProgress % 12.5) * 8}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                     
