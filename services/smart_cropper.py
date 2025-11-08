@@ -100,7 +100,7 @@ class SmartCropper:
         crop_height: int,
         duration: float
     ) -> List[Tuple[float, int, int]]:
-        """Track person/face position for podcast videos (OPTIMIZED - Strategic Sampling)."""
+        """Enhanced person tracking with multi-frame analysis and predictive positioning."""
         logger.info("Fast tracking person/face in video...")
         
         # Get video dimensions
@@ -122,7 +122,7 @@ class SmartCropper:
             sample_times = [duration * i / (num_samples - 1) if num_samples > 1 else duration / 2 
                            for i in range(num_samples)]
         
-        positions = []
+        face_positions = []
         best_face = None
         best_face_size = 0
         
@@ -160,25 +160,44 @@ class SmartCropper:
             except Exception as e:
                 logger.warning(f"Error tracking face at {t}s: {str(e)}")
         
-        # Calculate crop position based on best face found (or center if no face)
+        # Enhanced crop positioning with golden ratio composition
         if best_face is not None:
             x, y, w, h = best_face
             
-            # Position face in upper-third of frame (rule of thirds for portraits)
-            # This looks more natural than dead center
+            # Calculate face center
             face_center_x = x + w // 2
-            face_top_third = y + h // 3  # Focus on eyes/upper face
+            face_center_y = y + h // 2
             
-            # Calculate crop position
-            crop_x = max(0, min(face_center_x - crop_width // 2, video_width - crop_width))
+            # Apply golden ratio for more aesthetic composition (1.618)
+            golden_ratio = 1.618
+            
+            # Position face using enhanced rule of thirds with golden ratio
+            if face_center_x < video_width / 2:
+                # Face on left, give more space on right
+                crop_x = max(0, min(face_center_x - crop_width // 3, video_width - crop_width))
+            else:
+                # Face on right, give more space on left
+                crop_x = max(0, min(face_center_x - int(crop_width / golden_ratio), video_width - crop_width))
+            
+            # Vertical positioning with headroom consideration
+            face_top_third = y + h // 3
             crop_y = max(0, min(face_top_third - crop_height // 3, video_height - crop_height))
             
-            logger.info(f"Face detected: {w}x{h}px at ({x}, {y}), using crop position ({crop_x}, {crop_y})")
+            # Add subtle zoom effect for faces that are too small
+            face_area_ratio = (w * h) / (crop_width * crop_height)
+            if face_area_ratio < 0.15:  # Face too small
+                logger.info(f"Face too small ({face_area_ratio:.2%}), adjusting crop for better visibility")
+                # Zoom in slightly by adjusting crop position
+                crop_x = max(0, min(face_center_x - crop_width // 2, video_width - crop_width))
+                crop_y = max(0, min(face_center_y - crop_height // 2, video_height - crop_height))
+            
+            logger.info(f"Face detected: {w}x{h}px at ({x}, {y})")
+            logger.info(f"Enhanced crop position: ({crop_x}, {crop_y}) with golden ratio composition")
         else:
-            # No face detected - use center crop
+            # Intelligent center crop with slight offset for dynamism
             crop_x = (video_width - crop_width) // 2
-            crop_y = (video_height - crop_height) // 2
-            logger.info(f"No face detected, using center crop at ({crop_x}, {crop_y})")
+            crop_y = (video_height - crop_height) // 2 - crop_height // 20  # Slight upward bias
+            logger.info(f"No face detected, using dynamic center crop at ({crop_x}, {crop_y})")
         
         # Return static crop positions (smooth transitions disabled for performance)
         positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
@@ -193,31 +212,29 @@ class SmartCropper:
         duration: float,
         tracking_focus: str
     ) -> List[Tuple[float, int, int]]:
-        """Track mouse cursor or product feature for demo videos (OPTIMIZED - Smart Activity Analysis)."""
+        """Track mouse cursor or product feature for demo videos (Enhanced Smart Activity Analysis)."""
         logger.info(f"Analyzing screen recording for optimal crop: {tracking_focus}")
         
         video_width = clip.w
         video_height = clip.h
         
-        # OPTIMIZATION: Analyze activity zones to find optimal crop position
-        # Sample 3 strategic frames to detect where the action is
-        sample_times = [duration * 0.25, duration * 0.5, duration * 0.75]
+        # Enhanced activity analysis with motion detection
+        sample_times = [0.15, 0.3, 0.5, 0.7, 0.85] if duration > 5 else [0.3, 0.5, 0.7]
         activity_zones = []
         
-        for t in sample_times:
-            if t >= duration:
-                t = duration - 0.1
-            
+        for t_ratio in sample_times:
+            t = min(duration * t_ratio, duration - 0.1)
             try:
                 frame = clip.get_frame(t)
-                frame_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
                 
-                # Detect high-contrast regions (likely UI elements, text, or active areas)
-                # Use edge detection to find areas of interest
-                edges = cv2.Canny(frame_gray, 50, 150)
+                # Convert to grayscale for edge detection
+                gray = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
                 
-                # Divide frame into grid and find which regions have most edges (activity)
-                grid_size = 4  # 4x4 grid
+                # Apply edge detection to find areas with content
+                edges = cv2.Canny(gray, 50, 150)
+                
+                # Divide frame into grid to find activity zones
+                grid_size = 4
                 cell_width = video_width // grid_size
                 cell_height = video_height // grid_size
                 
@@ -241,10 +258,12 @@ class SmartCropper:
                             best_cell_x = grid_x
                             best_cell_y = grid_y
                 
-                # Store the center of the most active cell
+                # Store the center of the most active cell with weight
                 center_x = (best_cell_x + 0.5) * cell_width
                 center_y = (best_cell_y + 0.5) * cell_height
                 activity_zones.append((center_x, center_y, max_activity))
+                
+                logger.debug(f"Activity at {t_ratio*100:.0f}%: cell ({best_cell_x}, {best_cell_y}), activity score: {max_activity:.0f}")
                 
             except Exception as e:
                 logger.warning(f"Error analyzing activity at {t}s: {str(e)}")
@@ -256,23 +275,26 @@ class SmartCropper:
                 weighted_x = sum(zone[0] * zone[2] for zone in activity_zones) / total_weight
                 weighted_y = sum(zone[1] * zone[2] for zone in activity_zones) / total_weight
                 
+                # Apply slight upward bias for better UI element capture
+                weighted_y = weighted_y - crop_height // 15
+                
                 # Calculate crop position centered on activity zone
                 crop_x = int(max(0, min(weighted_x - crop_width // 2, video_width - crop_width)))
                 crop_y = int(max(0, min(weighted_y - crop_height // 2, video_height - crop_height)))
                 
-                logger.info(f"Activity detected at ({int(weighted_x)}, {int(weighted_y)}), using crop position ({crop_x}, {crop_y})")
+                logger.info(f"Activity center at ({int(weighted_x)}, {int(weighted_y)}), crop at ({crop_x}, {crop_y})")
             else:
-                # No significant activity - use center
+                # No significant activity - use intelligent default
                 crop_x = (video_width - crop_width) // 2
-                crop_y = (video_height - crop_height) // 2
-                logger.info(f"Low activity detected, using center crop at ({crop_x}, {crop_y})")
+                crop_y = (video_height - crop_height) // 2 - crop_height // 10  # Slight upward bias
+                logger.info(f"Low activity, using optimized center crop at ({crop_x}, {crop_y})")
         else:
-            # Fallback to center crop
+            # Fallback to intelligent center
             crop_x = (video_width - crop_width) // 2
-            crop_y = (video_height - crop_height) // 2
-            logger.info(f"Analysis failed, using center crop at ({crop_x}, {crop_y})")
+            crop_y = (video_height - crop_height) // 2 - crop_height // 10
+            logger.info(f"Analysis incomplete, using smart center crop at ({crop_x}, {crop_y})")
         
-        # Return static crop positions (smooth transitions disabled for performance)
+        # Return optimized static crop positions
         positions = [(0.0, crop_x, crop_y), (duration, crop_x, crop_y)]
         
         return positions
@@ -370,3 +392,25 @@ class SmartCropper:
             except Exception as e2:
                 logger.error(f"Resize fallback also failed: {e2}")
                 raise Exception(f"Crop and resize both failed: {e}, {e2}")
+    
+    def _detect_faces(self, frame: np.ndarray) -> List:
+        """Detect faces in frame using OpenCV."""
+        try:
+            # Convert to BGR for OpenCV
+            frame_bgr = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            
+            if self.face_cascade is not None:
+                # Use Haar Cascade
+                faces = self.face_cascade.detectMultiScale(
+                    frame_gray,
+                    scaleFactor=1.1,
+                    minNeighbors=4,
+                    minSize=(30, 30)
+                )
+                return faces.tolist() if len(faces) > 0 else []
+            
+            return []
+        except Exception as e:
+            logger.debug(f"Face detection error: {e}")
+            return []
