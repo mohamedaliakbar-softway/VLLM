@@ -171,6 +171,18 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             db.commit()
             return
         
+        # Helper function to convert timestamp string to seconds
+        def timestamp_to_seconds(timestamp_str):
+            """Convert timestamp string like '01:20' to seconds (80.0)"""
+            if isinstance(timestamp_str, (int, float)):
+                return float(timestamp_str)
+            parts = str(timestamp_str).split(":")
+            if len(parts) == 2:  # MM:SS
+                return float(parts[0]) * 60 + float(parts[1])
+            elif len(parts) == 3:  # HH:MM:SS
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            return 0.0
+        
         shorts_info = []
         for idx, short in enumerate(created_shorts):
             # Save short to database
@@ -179,8 +191,8 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                 project_id=job_id,
                 filename=short["filename"],
                 title=short.get("title", f"Highlight {idx + 1}"),
-                start_time=short["start_time"],
-                end_time=short["end_time"],
+                start_time=timestamp_to_seconds(short["start_time"]),
+                end_time=timestamp_to_seconds(short["end_time"]),
                 duration_seconds=short["duration_seconds"],
                 engagement_score=short["engagement_score"],
                 marketing_effectiveness=short["marketing_effectiveness"],
@@ -188,12 +200,19 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             )
             db.add(db_short)
             
+            # Helper function to format seconds as timestamp
+            def seconds_to_timestamp(seconds):
+                """Convert seconds to MM:SS format"""
+                mins = int(seconds // 60)
+                secs = int(seconds % 60)
+                return f"{mins:02d}:{secs:02d}"
+            
             shorts_info.append({
                 "short_id": db_short.id,
                 "title": db_short.title,
                 "filename": db_short.filename,
-                "start_time": db_short.start_time,
-                "end_time": db_short.end_time,
+                "start_time": seconds_to_timestamp(db_short.start_time),
+                "end_time": seconds_to_timestamp(db_short.end_time),
                 "duration": db_short.duration_seconds,
                 "duration_seconds": db_short.duration_seconds,
                 "engagement_score": db_short.engagement_score,
@@ -377,14 +396,21 @@ async def get_project(project_id: str):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
+        # Helper function to format seconds as timestamp
+        def seconds_to_timestamp(seconds):
+            """Convert seconds to MM:SS format"""
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins:02d}:{secs:02d}"
+        
         shorts_info = []
         for short in project.shorts:
             shorts_info.append({
                 "short_id": short.id,
                 "title": short.title,
                 "filename": short.filename,
-                "start_time": short.start_time,
-                "end_time": short.end_time,
+                "start_time": seconds_to_timestamp(short.start_time),
+                "end_time": seconds_to_timestamp(short.end_time),
                 "duration": short.duration_seconds,
                 "duration_seconds": short.duration_seconds,
                 "engagement_score": short.engagement_score,
