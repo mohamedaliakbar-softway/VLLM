@@ -1121,27 +1121,39 @@ function VideoEditor() {
         if (status === "completed") {
           clearInterval(pollInterval);
 
-          console.log("Caption burn completed, result:", result);
+          console.log("Caption burn completed, full result:", JSON.stringify(result, null, 2));
 
           // Update clip with new captioned video URL
           const updatedClips = [...clips];
-          const newVideoUrl = result.new_file_path || result.file_path || selectedClip.url;
+          // Try multiple possible field names from the API
+          const newVideoUrl = result.new_file_path || result.file_path || result.url || result.output_path || selectedClip.url;
+          // Add timestamp to force reload
+          const urlWithTimestamp = `${newVideoUrl}?t=${Date.now()}`;
+          
+          console.log("Available result fields:", Object.keys(result));
+          console.log("Selected new video URL:", newVideoUrl);
+          console.log("Current clip URL:", selectedClip.url);
           
           updatedClips[selectedClipIndex] = {
             ...updatedClips[selectedClipIndex],
-            url: newVideoUrl,
+            url: urlWithTimestamp,
             hasCaptions: true,
             captionStyle: styleName,
           };
           
-          console.log("Updating clip URL to:", newVideoUrl);
+          console.log("Updating clip URL from:", selectedClip.url);
+          console.log("Updating clip URL to:", urlWithTimestamp);
+          console.log("Updated clip object:", updatedClips[selectedClipIndex]);
           setClips(updatedClips);
 
           // Force video reload by resetting the video element
-          if (videoRef.current) {
-            videoRef.current.load();
-            videoRef.current.currentTime = 0;
-          }
+          setTimeout(() => {
+            if (videoRef.current) {
+              console.log("Force reloading video with new URL");
+              videoRef.current.load();
+              videoRef.current.currentTime = 0;
+            }
+          }, 100);
 
           // Remove loading message and add success message
           setChatHistory((prev) => 
@@ -1215,6 +1227,17 @@ function VideoEditor() {
     const interval = setInterval(updateCaption, 100);
     return () => clearInterval(interval);
   }, [captions, showCaptionPreview]);
+
+  // Force video reload when URL changes (especially for captioned videos)
+  useEffect(() => {
+    if (selectedClip?.url && videoRef.current) {
+      console.log("Video URL changed to:", selectedClip.url);
+      // Pause current playback
+      setIsPlaying(false);
+      // Force reload
+      videoRef.current.load();
+    }
+  }, [selectedClip?.url]);
 
   return (
     <div className="h-screen bg-white flex overflow-hidden">
