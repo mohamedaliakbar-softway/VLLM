@@ -1122,32 +1122,33 @@ function VideoEditor() {
           <div className="flex-1 flex items-center justify-center">
             <div className="relative w-[360px] h-[640px] bg-black rounded-3xl overflow-hidden shadow-2xl">
             {isProcessing ? (
-              // Enhanced loading animation with strike-through list
+              // Loading animation with strike-through list
               <div className="relative w-full h-full rounded-3xl overflow-hidden">
                 {thumbnailUrl && (
                   <img 
                     src={thumbnailUrl} 
                     alt="Video thumbnail" 
-                    className="w-full h-full object-cover blur-3xl brightness-50 opacity-40 rounded-3xl"
+                    className="w-full h-full object-cover blur-2xl brightness-50 opacity-50 rounded-3xl"
                   />
                 )}
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl rounded-3xl p-8">
-                  {/* Glass morphism bubble effect */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-96 h-96 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full blur-3xl animate-pulse"></div>
-                    <div className="absolute w-80 h-80 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-3xl animate-pulse animation-delay-1000"></div>
-                  </div>
-                  
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 backdrop-blur-md rounded-3xl p-8 border border-white/10">
                   {/* Loading steps list */}
                   <div className="relative z-10 w-full max-w-md">
-                    <div className="mb-8 text-center">
-                      <h3 className="text-2xl font-bold text-white mb-2">Creating Your Magic ✨</h3>
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="h-12 w-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center">
-                          <div className="h-6 w-6 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-spin"></div>
-                        </div>
-                        <p className="text-lg font-semibold text-white">{Math.round(processingProgress)}%</p>
+                    <div className="mb-6 text-center">
+                      <div className="loader-wrapper-processing">
+                        <span className="loader-letter">G</span>
+                        <span className="loader-letter">e</span>
+                        <span className="loader-letter">n</span>
+                        <span className="loader-letter">e</span>
+                        <span className="loader-letter">r</span>
+                        <span className="loader-letter">a</span>
+                        <span className="loader-letter">t</span>
+                        <span className="loader-letter">i</span>
+                        <span className="loader-letter">n</span>
+                        <span className="loader-letter">g</span>
+                        <div className="loader"></div>
                       </div>
+                      <p className="text-lg font-semibold text-white mt-4">{Math.round(processingProgress)}%</p>
                     </div>
                     
                     <div className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6">
