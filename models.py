@@ -43,3 +43,33 @@ class Short(Base):
     thumbnail_style = Column(Text)
     
     project = relationship("Project", back_populates="shorts")
+    publications = relationship("Publication", back_populates="short", cascade="all, delete-orphan")
+
+class Publication(Base):
+    __tablename__ = "publications"
+    
+    id = Column(String, primary_key=True, index=True)
+    short_id = Column(String, ForeignKey("shorts.id"), nullable=False)
+    platform = Column(String, nullable=False)  # linkedin, instagram, x, youtube_shorts, tiktok
+    status = Column(String, default="queued")  # queued, processing, published, failed
+    error_message = Column(Text, nullable=True)
+    external_post_id = Column(String, nullable=True)
+    external_url = Column(String, nullable=True)
+    payload = Column(Text, nullable=True)  # JSON blob of request sent
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    short = relationship("Short", back_populates="publications")
+
+
+class AccountToken(Base):
+    __tablename__ = "account_tokens"
+    
+    id = Column(String, primary_key=True, index=True)
+    platform = Column(String, nullable=False)  # linkedin, instagram, x
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    user_id = Column(String, nullable=True)  # optional: future multi-user support
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
