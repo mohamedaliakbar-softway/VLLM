@@ -52,6 +52,8 @@ function VideoEditor() {
   useEffect(() => {
     if (!youtubeUrl) return;
 
+    let pollInterval = null;
+
     const processVideo = async () => {
       try {
         setProcessingStatus('Extracting transcript...');
@@ -65,7 +67,7 @@ function VideoEditor() {
         
         // Poll for results
         const jobId = response.data.job_id;
-        pollJobStatus(jobId);
+        pollInterval = pollJobStatus(jobId);
         
       } catch (err) {
         setError(err.response?.data?.detail || 'Failed to process video');
@@ -78,9 +80,16 @@ function VideoEditor() {
     };
 
     processVideo();
+
+    // Cleanup on unmount
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
   }, [youtubeUrl]);
 
-  const pollJobStatus = async (jobId) => {
+  const pollJobStatus = (jobId) => {
     const maxAttempts = 60; // 1 minute timeout
     let attempts = 0;
 
@@ -131,6 +140,8 @@ function VideoEditor() {
         setIsProcessing(false);
       }
     }, 1000);
+
+    return poll; // Return interval ID for cleanup
   };
 
   const formatTime = (seconds) => {
@@ -311,11 +322,13 @@ function VideoEditor() {
             {isProcessing ? (
               // Show blurred thumbnail while processing
               <div className="preview-loading">
-                <img 
-                  src={thumbnailUrl} 
-                  alt="Video thumbnail" 
-                  className="blurred-thumbnail"
-                />
+                {thumbnailUrl && (
+                  <img 
+                    src={thumbnailUrl} 
+                    alt="Video thumbnail" 
+                    className="blurred-thumbnail"
+                  />
+                )}
                 <div className="loading-overlay">
                   <Loader2 size={64} className="spinner-icon" />
                   <p className="loading-text">{processingStatus}</p>
