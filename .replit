@@ -17,7 +17,23 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+args = "frontend"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
 args = "backend"
+
+[[workflows.workflow]]
+name = "frontend"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[workflows.workflow]]
 name = "backend"
@@ -25,7 +41,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+args = "uvicorn main:app --host 0.0.0.0 --port 8000"
 waitForPort = 8000
 
 [workflows.workflow.metadata]
@@ -36,12 +52,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 41841
-externalPort = 3000
-
-[[ports]]
 localPort = 8000
 externalPort = 8000
+
+[[ports]]
+localPort = 34097
+externalPort = 3000
 
 [deployment]
 deploymentTarget = "vm"

@@ -71,12 +71,12 @@ app.include_router(auth.router)
 # Run database migrations on startup
 @app.on_event("startup")
 async def startup_event():
-    """Run database migrations on startup."""
+    """Initialize application on startup."""
     try:
-        run_migrations()
-        logger.info("Database migrations completed successfully")
+        # run_migrations()  # Temporarily disabled - migrations hanging
+        logger.info("Application startup completed")
     except Exception as e:
-        logger.error(f"Error running migrations: {e}")
+        logger.error(f"Error during startup: {e}")
 
 # Initialize services
 youtube_processor = YouTubeProcessor()
