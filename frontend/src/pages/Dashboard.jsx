@@ -221,7 +221,13 @@ function Dashboard() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Your Videos</h2>
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-              {['all', 'week', 'month', 'year'].map((filter) => (
+              {['all', 'week', 'month', 'year'].map((filter) => {
+              let filterLabel = 'All Time';
+              if (filter === 'week') filterLabel = 'This Week';
+              else if (filter === 'month') filterLabel = 'This Month';
+              else if (filter === 'year') filterLabel = 'This Year';
+              
+              return (
                 <Button
                   key={filter}
                   variant={timelineFilter === filter ? 'default' : 'ghost'}
@@ -229,9 +235,10 @@ function Dashboard() {
                   onClick={() => handleTimelineFilter(filter)}
                   className={timelineFilter === filter ? 'bg-[#1E201E] hover:bg-[#1E201E]/90 text-white' : ''}
                 >
-                  {filter === 'all' ? 'All Time' : filter === 'week' ? 'This Week' : filter === 'month' ? 'This Month' : 'This Year'}
+                  {filterLabel}
                 </Button>
-              ))}
+              );
+            })}
             </div>
           </div>
           {loading ? (
@@ -239,17 +246,18 @@ function Dashboard() {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E201E]"></div>
               <p className="mt-4 text-gray-600">Loading your videos...</p>
             </div>
-          ) : videos.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-4">No videos yet</p>
-                <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={() => navigate('/')}>
-                  Create Your First Short
-                </Button>
-              </CardContent>
-            </Card>
           ) : (
+            videos.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">No videos yet</p>
+                  <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={() => navigate('/')}>
+                    Create Your First Short
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {videos.map((video) => (
                 <div key={video.id} className="group">
@@ -391,11 +399,10 @@ function Dashboard() {
                       </Card>
                     ))}
                   </div>
-                )}
-                </div>
-              ))}
+                )
+              )}
             </div>
-          )}
+          ))}
         </div>
       </div>
     </div>

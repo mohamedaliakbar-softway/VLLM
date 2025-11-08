@@ -106,6 +106,9 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
 
 
+# Constants
+ERROR_SHORT_NOT_FOUND = "Short not found"
+
 # In-memory job storage (use Redis/DB in production)
 jobs = {}
 
@@ -113,12 +116,12 @@ jobs = {}
 async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, platform: str):
     """Background task to process video and emit progress updates (OPTIMIZED FOR 20 SECONDS)."""
     db = SessionLocal()
-    logger.info(f"========== STARTING VIDEO PROCESSING ==========")
+    logger.info("========== STARTING VIDEO PROCESSING ==========")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"YouTube URL: {youtube_url}")
     logger.info(f"Max Shorts: {max_shorts}")
     logger.info(f"Platform: {platform}")
-    logger.info(f"===============================================")
+    logger.info("===============================================")
     
     try:
         jobs[job_id] = {"status": "processing", "progress": 0}
@@ -145,7 +148,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             except Exception as e:
                 logger.error(f"Failed to extract transcript: {type(e).__name__}: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                raise Exception(f"Transcript extraction failed: {str(e)}") from e
+                raise RuntimeError(f"Transcript extraction failed: {str(e)}") from e
         
         if not video_info.get('transcript'):
             logger.warning(f"No transcript found for {youtube_url}, falling back to basic video info")
@@ -179,7 +182,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             except Exception as e:
                 logger.error(f"Gemini analysis failed: {type(e).__name__}: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                raise Exception(f"AI analysis failed: {str(e)}") from e
+                raise RuntimeError(f"AI analysis failed: {str(e)}") from e
         
         if not highlights:
             error_msg = f"No highlights found (transcript length: {transcript_length} chars, duration: {video_info.get('duration', 0)}s)"
@@ -213,7 +216,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             except Exception as e:
                 logger.error(f"Segment download failed: {type(e).__name__}: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                raise Exception(f"Video segment download failed: {str(e)}") from e
+                raise RuntimeError(f"Video segment download failed: {str(e)}") from e
         
         if not segment_files:
             error_msg = "Failed to download segments - no files returned"
@@ -244,7 +247,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             except Exception as e:
                 logger.error(f"Shorts creation failed: {type(e).__name__}: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                raise Exception(f"Video shorts creation failed: {str(e)}") from e
+                raise RuntimeError(f"Video shorts creation failed: {str(e)}") from e
         
         if not created_shorts:
             error_msg = "Failed to create shorts - no shorts generated"
@@ -329,12 +332,12 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         error_type = type(e).__name__
         error_msg = str(e)
         
-        logger.error(f"========== VIDEO PROCESSING FAILED ==========")
+        logger.error("========== VIDEO PROCESSING FAILED ==========")
         logger.error(f"Job ID: {job_id}")
         logger.error(f"Error Type: {error_type}")
         logger.error(f"Error Message: {error_msg}")
         logger.error(f"Full Traceback:\n{traceback.format_exc()}")
-        logger.error(f"============================================")
+        logger.error("============================================")
         
         # Create user-friendly error message
         user_error_msg = f"{error_type}: {error_msg}"
@@ -356,7 +359,7 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         logger.info(f"Cleaning up job {job_id}")
         progress_tracker.cleanup_job(job_id)
         db.close()
-        logger.info(f"========== VIDEO PROCESSING ENDED ==========\n")
+        logger.info("========== VIDEO PROCESSING ENDED ==========\n")
 
 
 @app.get("/")
@@ -387,7 +390,6 @@ async def generate_shorts(
     Use GET /api/v1/job/{job_id} to check completion status and get results.
     """
     job_id = str(uuid.uuid4())
-    total_start_time = time.time()
     
     logger.info(f"Creating job {job_id} for URL: {request.youtube_url}")
     
@@ -552,7 +554,7 @@ async def _publish_publication_async(publication_id: str):
         short = db.query(Short).filter(Short.id == pub.short_id).first()
         if not short:
             pub.status = "failed"
-            pub.error_message = "Short not found"
+            pub.error_message = ERROR_SHORT_NOT_FOUND
             db.commit()
             return
 
@@ -641,7 +643,7 @@ async def _publish_publication_async(publication_id: str):
                 pub.status = "failed"
                 pub.error_message = str(e)
                 db.commit()
-        except:
+        except Exception:
             pass
     finally:
         db.close()
@@ -654,7 +656,7 @@ async def share_short(request: ShareRequest, background_tasks: BackgroundTasks):
     try:
         short = db.query(Short).filter(Short.id == request.short_id).first()
         if not short:
-            raise HTTPException(status_code=404, detail="Short not found")
+            raise HTTPException(status_code=404, detail=ERROR_SHORT_NOT_FOUND)
 
         # Validate platforms against allowed list
         allowed = {p.strip().lower() for p in (settings.allowed_platforms or "").split(',') if p.strip()}
@@ -1064,7 +1066,7 @@ async def generate_metadata(request: GenerateMetadataRequest):
         if request.short_id:
             short = db.query(Short).filter(Short.id == request.short_id).first()
             if not short:
-                raise HTTPException(status_code=404, detail="Short not found")
+                raise HTTPException(status_code=404, detail=ERROR_SHORT_NOT_FOUND)
         project, info = _fetch_project_and_transcript(db, project_id=request.project_id, short=short)
 
         transcript = info.get("transcript", "")
@@ -1100,7 +1102,7 @@ async def generate_captions(request: GenerateCaptionsRequest):
     try:
         short = db.query(Short).filter(Short.id == request.short_id).first()
         if not short:
-            raise HTTPException(status_code=404, detail="Short not found")
+            raise HTTPException(status_code=404, detail=ERROR_SHORT_NOT_FOUND)
         project, info = _fetch_project_and_transcript(db, short=short)
 
         transcript = info.get("transcript", "")
@@ -1136,7 +1138,7 @@ async def generate_thumbnail_prompt(request: GenerateThumbnailPromptRequest):
     try:
         short = db.query(Short).filter(Short.id == request.short_id).first()
         if not short:
-            raise HTTPException(status_code=404, detail="Short not found")
+            raise HTTPException(status_code=404, detail=ERROR_SHORT_NOT_FOUND)
         project, info = _fetch_project_and_transcript(db, short=short)
 
         transcript = info.get("transcript", "")
