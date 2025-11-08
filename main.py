@@ -748,6 +748,153 @@ async def execute_ai_command(request: AIAgentRequest):
             detail=f"AI Agent error: {str(e)}"
         )
 
+# ============================================================================
+# AI Text Features: Metadata, Captions, Thumbnail
+# ============================================================================
+
+class GenerateMetadataRequest(BaseModel):
+    project_id: Optional[str] = None
+    short_id: Optional[str] = None
+    platform: Optional[str] = "default"
+    tone: Optional[str] = None
+
+
+class GenerateCaptionsRequest(BaseModel):
+    short_id: str
+    language: Optional[str] = "en"
+    variants: Optional[int] = 3
+    words_per_minute: Optional[int] = None
+
+
+class GenerateThumbnailPromptRequest(BaseModel):
+    short_id: str
+    platform: Optional[str] = "default"
+
+
+def _fetch_project_and_transcript(db, project_id: Optional[str] = None, short: Optional[Short] = None):
+    """Helper to get project, transcript text, and ensure basic availability."""
+    project = None
+    if short and not project_id:
+        project = db.query(Project).filter(Project.id == short.project_id).first()
+    elif project_id:
+        project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        info = youtube_processor.get_transcript(project.youtube_url)
+    except Exception as e:
+        logger.warning(f"Transcript fetch failed, falling back to video info: {e}")
+        info = youtube_processor.get_video_info(project.youtube_url)
+        info["transcript"] = f"{info.get('title','')}. {info.get('description','')}"
+    return project, info
+
+
+@app.post("/api/v1/generate-metadata")
+async def generate_metadata(request: GenerateMetadataRequest):
+    """Generate platform-specific title, description, hashtags, and CTA for a short or project."""
+    db = SessionLocal()
+    try:
+        short = None
+        if request.short_id:
+            short = db.query(Short).filter(Short.id == request.short_id).first()
+            if not short:
+                raise HTTPException(status_code=404, detail="Short not found")
+        project, info = _fetch_project_and_transcript(db, project_id=request.project_id, short=short)
+
+        transcript = info.get("transcript", "")
+        meta = gemini_analyzer.generate_metadata(
+            transcript=transcript,
+            platform=request.platform or "default"
+        )
+
+        if short:
+            short.platform_title = meta.get("title", "")
+            short.platform_description = meta.get("description", "")
+            # store hashtags as comma-separated for simplicity
+            hashtags_list = meta.get("hashtags", []) or []
+            short.hashtags = ",".join(hashtags_list)
+            short.cta = meta.get("cta", "")
+            # keep suggested_cta for backward compatibility surfaces
+            short.suggested_cta = short.cta or short.suggested_cta
+            db.commit()
+
+        return {
+            "project_id": project.id,
+            "short_id": short.id if short else None,
+            "metadata": meta
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/v1/captions")
+async def generate_captions(request: GenerateCaptionsRequest):
+    """Generate SRT captions and variants for a short using the video transcript."""
+    db = SessionLocal()
+    try:
+        short = db.query(Short).filter(Short.id == request.short_id).first()
+        if not short:
+            raise HTTPException(status_code=404, detail="Short not found")
+        project, info = _fetch_project_and_transcript(db, short=short)
+
+        transcript = info.get("transcript", "")
+        caps = gemini_analyzer.generate_captions(
+            transcript=transcript,
+            language=request.language or "en",
+            variants=request.variants or 3,
+            words_per_minute=request.words_per_minute
+        )
+
+        short.captions_srt = caps.get("srt", "")
+        import json as _json
+        try:
+            short.captions_alt = _json.dumps(caps.get("variants", []))
+        except Exception:
+            short.captions_alt = "[]"
+        short.language = request.language or "en"
+        db.commit()
+
+        return {
+            "project_id": project.id,
+            "short_id": short.id,
+            "captions": caps
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/v1/thumbnail/prompt")
+async def generate_thumbnail_prompt(request: GenerateThumbnailPromptRequest):
+    """Generate thumbnail headline and style guidance for a short."""
+    db = SessionLocal()
+    try:
+        short = db.query(Short).filter(Short.id == request.short_id).first()
+        if not short:
+            raise HTTPException(status_code=404, detail="Short not found")
+        project, info = _fetch_project_and_transcript(db, short=short)
+
+        transcript = info.get("transcript", "")
+        th = gemini_analyzer.generate_thumbnail_prompt(
+            transcript=transcript,
+            platform=request.platform or "default"
+        )
+
+        import json as _json
+        short.thumbnail_copy = th.get("headline", "")
+        try:
+            short.thumbnail_style = _json.dumps(th.get("style", {}))
+        except Exception:
+            short.thumbnail_style = "{}"
+        db.commit()
+
+        return {
+            "project_id": project.id,
+            "short_id": short.id,
+            "thumbnail": th
+        }
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     import uvicorn
