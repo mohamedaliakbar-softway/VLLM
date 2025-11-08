@@ -1848,7 +1848,7 @@ function VideoEditor() {
           }}
         >
         {/* Center Panel - Video Preview (Fixed Size) */}
-        <main className="flex flex-col bg-white p-6 overflow-hidden">
+        <main className="flex flex-col p-6 overflow-hidden" style={{ backgroundColor: '#1E201E' }}>
           <div className="flex-1 flex items-center justify-center min-h-0">
             <div className={`relative bg-black rounded-3xl overflow-hidden shadow-2xl ${isProcessing ? 'w-[640px] aspect-video' : 'w-[360px] aspect-[9/16]'}`} style={{ transform: 'translateY(-2%)' }}>
               {isProcessing ? (
