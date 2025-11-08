@@ -754,7 +754,7 @@ function VideoEditor() {
   };
 
   // Apply logo to current clip
-  const handleApplyLogo = async () => {
+  const handleApplyLogo = async (createNewClip = false) => {
     if (!selectedLogo) {
       alert('Please upload a logo first');
       return;
@@ -766,6 +766,14 @@ function VideoEditor() {
       return;
     }
 
+    // Ask user if they want to replace or create new
+    const shouldCreateNew = createNewClip || window.confirm(
+      '🎨 Logo Application Options:\n\n' +
+      '• Click "OK" to CREATE A NEW CLIP with logo (keeps original)\n' +
+      '• Click "Cancel" to REPLACE ORIGINAL clip with logo\n\n' +
+      'Recommended: Create new clip to keep original'
+    );
+
     try {
       const response = await axios.post(
         `/api/v1/clips/${currentClip.id}/apply-logo`,
@@ -774,6 +782,7 @@ function VideoEditor() {
           size_percent: logoSettings.size_percent,
           opacity: logoSettings.opacity,
           padding: logoSettings.padding,
+          create_new_clip: shouldCreateNew,
         },
         {
           params: {
@@ -783,11 +792,12 @@ function VideoEditor() {
       );
 
       // Show success message
+      const action = shouldCreateNew ? 'New clip being created' : 'Original clip being updated';
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `✅ Logo applied successfully to ${currentClip.title}! Processing in background...`,
+          content: `✅ Logo applied successfully to ${currentClip.title}! ${action}...`,
           timestamp: new Date().toISOString(),
         },
       ]);

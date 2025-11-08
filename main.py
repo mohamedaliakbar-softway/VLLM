@@ -2130,6 +2130,7 @@ class ApplyLogoRequest(BaseModel):
     size_percent: float = 10.0
     opacity: float = 0.8
     padding: int = 20
+    create_new_clip: bool = False  # If True, creates new clip; if False, replaces original
 
 
 @app.post("/api/v1/upload-logo")
@@ -2323,7 +2324,9 @@ async def apply_logo_to_clip(
                 position=request.position,
                 size_percent=request.size_percent,
                 opacity=request.opacity,
-                padding=request.padding
+                padding=request.padding,
+                create_new_clip=request.create_new_clip,
+                project_id=short.project_id  # Pass project_id for creating new clip
             )
             
             return {
@@ -2349,7 +2352,9 @@ async def apply_logo_task(
     position: str,
     size_percent: float,
     opacity: float,
-    padding: int
+    padding: int,
+    create_new_clip: bool = False,
+    project_id: int = None
 ):
     """Background task to apply logo overlay to video"""
     try:
@@ -2366,7 +2371,12 @@ async def apply_logo_task(
         clipper = VideoClipper()
         
         # Generate output path
-        output_path = str(Path(video_path).with_stem(f"{Path(video_path).stem}_with_logo"))
+        if create_new_clip:
+            # Create new file for new clip
+            output_path = str(Path(video_path).with_stem(f"{Path(video_path).stem}_branded"))
+        else:
+            # Replace original - use temp name first, then replace
+            output_path = str(Path(video_path).with_stem(f"{Path(video_path).stem}_temp_logo"))
         
         await progress_tracker.update_progress(
             job_id,
@@ -2393,28 +2403,75 @@ async def apply_logo_task(
             "Updating database..."
         )
         
-        # Update database with new file path
+        # Update database
         db = SessionLocal()
         try:
-            short = db.query(Short).filter(Short.id == clip_id).first()
-            if short:
-                short.file_path = result_path
-                db.commit()
+            if create_new_clip:
+                # Create new clip entry
+                original_short = db.query(Short).filter(Short.id == clip_id).first()
+                if original_short:
+                    new_short = Short(
+                        project_id=project_id,
+                        file_path=result_path,
+                        start_time=original_short.start_time,
+                        end_time=original_short.end_time,
+                        duration=original_short.duration,
+                        title=f"{original_short.title} (Branded)",
+                        thumbnail_url=original_short.thumbnail_url,
+                        has_captions=original_short.has_captions
+                    )
+                    db.add(new_short)
+                    db.commit()
+                    db.refresh(new_short)
+                    
+                    await progress_tracker.update_progress(
+                        job_id,
+                        "completed",
+                        100,
+                        "Logo applied successfully - new clip created",
+                        result={
+                            "new_clip_id": new_short.id,
+                            "new_file_path": result_path,
+                            "original_clip_id": clip_id,
+                            "position": position,
+                            "size_percent": size_percent,
+                            "opacity": opacity
+                        }
+                    )
+            else:
+                # Replace original clip
+                short = db.query(Short).filter(Short.id == clip_id).first()
+                if short:
+                    # Delete old file
+                    old_path = Path(short.file_path)
+                    
+                    # Rename temp file to original name
+                    final_path = old_path
+                    if old_path.exists():
+                        old_path.unlink()  # Delete original
+                    
+                    Path(result_path).rename(final_path)  # Rename temp to original name
+                    
+                    # Update database (path stays same)
+                    short.file_path = str(final_path)
+                    db.commit()
+                    
+                    await progress_tracker.update_progress(
+                        job_id,
+                        "completed",
+                        100,
+                        "Logo applied successfully - original clip updated",
+                        result={
+                            "clip_id": clip_id,
+                            "file_path": str(final_path),
+                            "position": position,
+                            "size_percent": size_percent,
+                            "opacity": opacity,
+                            "replaced": True
+                        }
+                    )
         finally:
             db.close()
-        
-        await progress_tracker.update_progress(
-            job_id,
-            "completed",
-            100,
-            "Logo applied successfully",
-            result={
-                "new_file_path": result_path,
-                "position": position,
-                "size_percent": size_percent,
-                "opacity": opacity
-            }
-        )
         
     except Exception as e:
         logger.error(f"Logo overlay task failed: {str(e)}")
