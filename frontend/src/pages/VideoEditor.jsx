@@ -5,7 +5,7 @@ import {
   Send, Plus, ChevronUp, ChevronDown, SkipForward, SkipBackIcon,
   Loader2, Scissors, Type, Volume2, Wand2, Layers, Copy, Trash2, 
   ZoomIn, ZoomOut, RotateCw, Maximize2, Save, Sparkles, Video,
-  GripVertical, Maximize, Minimize
+  GripVertical, Maximize, Minimize, ChevronLeft, ChevronRight, PanelLeft, PanelRight
 } from 'lucide-react';
 import axios from 'axios';
 import { extractVideoId, getThumbnailUrl } from '../utils/youtube';
@@ -59,6 +59,27 @@ function VideoEditor() {
   const [chatPanelWidth, setChatPanelWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
+
+  // Panel visibility states (collapsible panels)
+  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
+  const [isRightPanelVisible, setIsRightPanelVisible] = useState(true);
+  
+  // Load panel preferences from localStorage
+  useEffect(() => {
+    const savedLeftPanel = localStorage.getItem('editor-left-panel-visible');
+    const savedRightPanel = localStorage.getItem('editor-right-panel-visible');
+    if (savedLeftPanel !== null) setIsLeftPanelVisible(savedLeftPanel === 'true');
+    if (savedRightPanel !== null) setIsRightPanelVisible(savedRightPanel === 'true');
+  }, []);
+
+  // Save panel preferences to localStorage
+  useEffect(() => {
+    localStorage.setItem('editor-left-panel-visible', String(isLeftPanelVisible));
+  }, [isLeftPanelVisible]);
+
+  useEffect(() => {
+    localStorage.setItem('editor-right-panel-visible', String(isRightPanelVisible));
+  }, [isRightPanelVisible]);
 
   // Clips data
   const [clips, setClips] = useState([]);
@@ -651,26 +672,54 @@ function VideoEditor() {
     <div className="editor-new-container">
       {/* Top Navigation */}
       <div className="editor-nav">
-        <button className="back-btn" onClick={() => navigate('/')}>
-          <ArrowLeft size={20} />
-          Back
-        </button>
-        <h2 className="editor-title">Video Editor</h2>
+        <div className="nav-left-group">
+          <button className="back-btn" onClick={() => navigate('/')}>
+            <ArrowLeft size={20} />
+            Back
+          </button>
+          <h2 className="editor-title">Video Editor</h2>
+        </div>
+        <div className="nav-center-group">
+          <button 
+            className={`panel-toggle-btn ${!isLeftPanelVisible ? 'collapsed' : ''}`}
+            onClick={() => setIsLeftPanelVisible(!isLeftPanelVisible)}
+            aria-label={isLeftPanelVisible ? 'Hide Copilot panel' : 'Show Copilot panel'}
+            title={isLeftPanelVisible ? 'Hide Copilot' : 'Show Copilot'}
+          >
+            <PanelLeft size={18} />
+          </button>
+          <button 
+            className={`panel-toggle-btn ${!isRightPanelVisible ? 'collapsed' : ''}`}
+            onClick={() => setIsRightPanelVisible(!isRightPanelVisible)}
+            aria-label={isRightPanelVisible ? 'Hide Properties panel' : 'Show Properties panel'}
+            title={isRightPanelVisible ? 'Hide Properties' : 'Show Properties'}
+          >
+            <PanelRight size={18} />
+          </button>
+        </div>
         <div className="editor-actions">
           <button className="action-btn" onClick={handleExport} disabled={isProcessing || clips.length === 0}>
-            <Download size={18} />
+            <Download size={20} />
             Export
           </button>
           <button className="action-btn primary" onClick={handlePublish} disabled={isProcessing || clips.length === 0}>
-            <Share2 size={18} />
+            <Share2 size={20} />
             Publish
           </button>
         </div>
       </div>
 
-      <div className="editor-workspace-new">
+      <div className={`editor-workspace-new ${!isLeftPanelVisible ? 'left-collapsed' : ''} ${!isRightPanelVisible ? 'right-collapsed' : ''}`}>
         {/* Left Panel - Assistant Chat - Resizable */}
-        <aside className="assistant-panel" style={{ width: `${chatPanelWidth}px`, minWidth: '280px', maxWidth: '600px' }}>
+        <aside 
+          className={`assistant-panel ${!isLeftPanelVisible ? 'collapsed' : ''}`}
+          style={{ 
+            width: isLeftPanelVisible ? `${chatPanelWidth}px` : '0px',
+            minWidth: isLeftPanelVisible ? '280px' : '0px',
+            maxWidth: isLeftPanelVisible ? '600px' : '0px',
+            overflow: isLeftPanelVisible ? 'visible' : 'hidden'
+          }}
+        >
           {/* Resize Handle */}
           <button 
             className="resize-handle" 
@@ -974,7 +1023,7 @@ function VideoEditor() {
         </main>
 
         {/* Right Panel - Properties */}
-        <aside className="properties-panel">
+        <aside className={`properties-panel ${!isRightPanelVisible ? 'collapsed' : ''}`}>
           <div className="panel-header">
             <h3>Properties</h3>
             <p>Edit selected clip</p>
