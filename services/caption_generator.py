@@ -17,8 +17,8 @@ import ffmpeg
 import wave
 from pathlib import Path
 from typing import Dict, List
-import google.generativeai as genai
-from config import GEMINI_API_KEY
+from google import genai
+from config import settings
 
 # Try to import Vosk (offline speech recognition)
 try:
@@ -26,9 +26,6 @@ try:
     VOSK_AVAILABLE = True
 except ImportError:
     VOSK_AVAILABLE = False
-
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 
 class CaptionGenerator:
@@ -41,7 +38,8 @@ class CaptionGenerator:
     def __init__(self):
         self.captions_dir = Path("uploads/captions")
         self.captions_dir.mkdir(parents=True, exist_ok=True)
-        self.gemini_model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.model = "gemini-2.0-flash-exp"
         
         # Try to load Vosk model (offline ASR)
         self.vosk_model = None
@@ -141,7 +139,9 @@ class CaptionGenerator:
         
         NOTE: Test this first! It might be good enough for your needs.
         """
-        audio_file = genai.upload_file(audio_path)
+        # Upload audio file
+        with open(audio_path, 'rb') as f:
+            audio_data = f.read()
         
         prompt = """Transcribe this audio with word-level timestamps in JSON:
 {
@@ -154,7 +154,13 @@ class CaptionGenerator:
 
 Provide the most accurate timestamps possible."""
 
-        response = self.gemini_model.generate_content([audio_file, prompt])
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=[
+                {"parts": [{"inline_data": {"mime_type": "audio/wav", "data": audio_data}}]},
+                {"parts": [{"text": prompt}]}
+            ]
+        )
         
         # Parse response
         text = response.text.strip()
