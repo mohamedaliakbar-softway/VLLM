@@ -16,6 +16,7 @@ from services.gemini_analyzer import GeminiAnalyzer
 from services.ai_agent import VideoEditingAgent
 from services.video_clipper import VideoClipper
 from services.progress_tracker import progress_tracker
+from services.youtube_data_api import YouTubeDataAPI
 from database import get_db, SessionLocal
 from models import Project, Short
 
@@ -47,6 +48,7 @@ youtube_processor = YouTubeProcessor()
 gemini_analyzer = GeminiAnalyzer()
 video_clipper = VideoClipper()
 ai_agent = VideoEditingAgent()
+youtube_data_api = YouTubeDataAPI()
 
 
 # Request/Response models
@@ -489,6 +491,227 @@ async def get_project(project_id: str):
         }
     finally:
         db.close()
+
+
+# ============================================================================
+# YouTube Data API Endpoints
+# ============================================================================
+
+@app.get("/api/v1/youtube/video/statistics/{video_id_or_url}")
+async def get_video_statistics(video_id_or_url: str):
+    """
+    Get detailed statistics for a YouTube video including views, likes, comments.
+    
+    Args:
+        video_id_or_url: YouTube video ID or full URL
+    
+    Returns:
+        Video statistics including views, likes, comments, duration, etc.
+    """
+    try:
+        stats = youtube_data_api.get_video_statistics(video_id_or_url)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting video statistics: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/channel/statistics/{channel_id_or_url}")
+async def get_channel_statistics(channel_id_or_url: str):
+    """
+    Get detailed statistics for a YouTube channel.
+    
+    Args:
+        channel_id_or_url: YouTube channel ID or channel URL
+    
+    Returns:
+        Channel statistics including subscriber count, video count, total views, etc.
+    """
+    try:
+        stats = youtube_data_api.get_channel_statistics(channel_id_or_url)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting channel statistics: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/video/comments/{video_id_or_url}")
+async def get_video_comments(
+    video_id_or_url: str,
+    max_results: int = 20,
+    order: str = "relevance"
+):
+    """
+    Get top comments for a YouTube video.
+    
+    Args:
+        video_id_or_url: YouTube video ID or URL
+        max_results: Maximum number of comments (1-100)
+        order: Sort order - 'relevance' or 'time'
+    
+    Returns:
+        List of comments with author, text, likes, and reply count
+    """
+    try:
+        if max_results > 100:
+            max_results = 100
+        
+        comments = youtube_data_api.get_video_comments(
+            video_id_or_url,
+            max_results=max_results,
+            order=order
+        )
+        return {"comments": comments, "count": len(comments)}
+    except Exception as e:
+        logger.error(f"Error getting video comments: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/search")
+async def search_videos(
+    query: str,
+    max_results: int = 25,
+    order: str = "relevance",
+    published_after: Optional[str] = None,
+    published_before: Optional[str] = None,
+    region_code: Optional[str] = None
+):
+    """
+    Search for YouTube videos.
+    
+    Args:
+        query: Search query string
+        max_results: Maximum results (1-50)
+        order: Sort order - 'relevance', 'date', 'rating', or 'viewCount'
+        published_after: ISO 8601 date (e.g., '2024-01-01T00:00:00Z')
+        published_before: ISO 8601 date
+        region_code: 2-letter country code (e.g., 'US', 'GB')
+    
+    Returns:
+        List of matching videos with metadata
+    """
+    try:
+        if max_results > 50:
+            max_results = 50
+        
+        videos = youtube_data_api.search_videos(
+            query=query,
+            max_results=max_results,
+            order=order,
+            published_after=published_after,
+            published_before=published_before,
+            region_code=region_code
+        )
+        return {"videos": videos, "count": len(videos)}
+    except Exception as e:
+        logger.error(f"Error searching videos: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/trending")
+async def get_trending_videos(
+    region_code: str = "US",
+    max_results: int = 25,
+    category_id: Optional[str] = None
+):
+    """
+    Get trending videos for a region.
+    
+    Args:
+        region_code: 2-letter country code (e.g., 'US', 'GB', 'IN')
+        max_results: Maximum results (1-50)
+        category_id: Optional YouTube category ID for filtering
+    
+    Returns:
+        List of trending videos with statistics
+    """
+    try:
+        if max_results > 50:
+            max_results = 50
+        
+        videos = youtube_data_api.get_trending_videos(
+            region_code=region_code,
+            max_results=max_results,
+            category_id=category_id
+        )
+        return {"videos": videos, "count": len(videos)}
+    except Exception as e:
+        logger.error(f"Error fetching trending videos: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/related/{video_id_or_url}")
+async def get_related_videos(
+    video_id_or_url: str,
+    max_results: int = 25
+):
+    """
+    Get videos related to a specific YouTube video.
+    
+    Args:
+        video_id_or_url: YouTube video ID or URL
+        max_results: Maximum results (1-50)
+    
+    Returns:
+        List of related videos
+    """
+    try:
+        if max_results > 50:
+            max_results = 50
+        
+        videos = youtube_data_api.get_related_videos(
+            video_id_or_url,
+            max_results=max_results
+        )
+        return {"videos": videos, "count": len(videos)}
+    except Exception as e:
+        logger.error(f"Error fetching related videos: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/playlist/{playlist_id}")
+async def get_playlist_videos(
+    playlist_id: str,
+    max_results: int = 50
+):
+    """
+    Get all videos from a YouTube playlist.
+    
+    Args:
+        playlist_id: YouTube playlist ID
+        max_results: Maximum videos to retrieve
+    
+    Returns:
+        List of videos in the playlist
+    """
+    try:
+        videos = youtube_data_api.get_playlist_videos(
+            playlist_id,
+            max_results=max_results
+        )
+        return {"videos": videos, "count": len(videos)}
+    except Exception as e:
+        logger.error(f"Error fetching playlist videos: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/v1/youtube/categories")
+async def get_video_categories(region_code: str = "US"):
+    """
+    Get all available YouTube video categories for a region.
+    
+    Args:
+        region_code: 2-letter country code (e.g., 'US', 'GB', 'IN')
+    
+    Returns:
+        List of video categories with IDs and titles
+    """
+    try:
+        categories = youtube_data_api.get_video_categories(region_code=region_code)
+        return {"categories": categories, "count": len(categories)}
+    except Exception as e:
+        logger.error(f"Error fetching video categories: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # AI Agent Endpoint

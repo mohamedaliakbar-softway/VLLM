@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     # Gemini API
     gemini_api_key: str  # Required - must be set in .env file
     
+    # YouTube Data API
+    youtube_api_key: Optional[str] = None  # Optional - for YouTube Data API features
+    
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
