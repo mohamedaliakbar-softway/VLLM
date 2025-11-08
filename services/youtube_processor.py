@@ -231,20 +231,20 @@ class YouTubeProcessor:
                     import requests
                     import time
                     
-                    # Retry logic with exponential backoff for rate limiting
-                    max_retries = 5  # Increased from 3 to 5
-                    base_retry_delay = 5  # Start with 5 seconds instead of 1
+                    # Retry logic with optimized backoff for rate limiting
+                    max_retries = 3  # Reduced from 5 to 3 for faster failure
+                    base_retry_delay = 2  # Start with 2 seconds (was 5s)
                     
                     for attempt in range(max_retries):
                         try:
-                            resp = requests.get(subtitle_url, timeout=30)  # Increased timeout from 10s
+                            resp = requests.get(subtitle_url, timeout=20)  # Reduced timeout from 30s
                             resp.raise_for_status()
                             transcript_text = self._parse_subtitles(resp.text)
                             break  # Success, exit retry loop
                         except requests.exceptions.HTTPError as http_err:
                             if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                                # Rate limited - wait longer with exponential backoff
-                                wait_time = base_retry_delay * (2 ** attempt)  # 5s, 10s, 20s, 40s, 80s
+                                # Rate limited - wait with optimized exponential backoff
+                                wait_time = base_retry_delay * (2 ** attempt)  # 2s, 4s, 8s (was 5s, 10s, 20s, 40s, 80s)
                                 logger.warning(
                                     f"Rate limited (429) on attempt {attempt + 1}/{max_retries} for video {video_id}, "
                                     f"waiting {wait_time}s before retry..."
@@ -259,7 +259,7 @@ class YouTubeProcessor:
                                 # Last attempt, re-raise
                                 logger.error(f"Failed to fetch transcript after {max_retries} attempts: {str(e)}")
                                 raise
-                            # Other errors - retry with exponential backoff
+                            # Other errors - retry with optimized backoff
                             wait_time = base_retry_delay * (2 ** attempt)
                             logger.warning(
                                 f"Error on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s: {str(e)}"
@@ -353,8 +353,9 @@ class YouTubeProcessor:
                 
                 video_url = info['url']  # Direct video URL
                 
-                # Download each segment using FFmpeg (parallel would be even faster)
-                for idx, segment in enumerate(segments, 1):
+                # Download segments in parallel for 2-3x faster processing
+                def download_segment(idx, segment):
+                    """Download a single segment using FFmpeg."""
                     start_time = segment.get('start_seconds', 0)
                     duration = segment.get('duration_seconds', 30)
                     
@@ -375,7 +376,9 @@ class YouTubeProcessor:
                     subprocess.run(cmd, capture_output=True, check=True)
                     
                     end_time = start_time + duration
-                    downloaded_segments.append({
+                    logger.info(f"Downloaded segment {idx}: {output_path}")
+                    
+                    return {
                         'segment_id': idx,
                         'file_path': str(output_path),
                         'start_time': start_time,  # Keep for backward compatibility
@@ -384,9 +387,25 @@ class YouTubeProcessor:
                         'duration_seconds': duration,  # Add for consistency
                         'end_time': end_time,  # Add for convenience
                         'end_seconds': end_time,  # Add for consistency
-                    })
+                    }
+                
+                # Download all segments in parallel (max 3 concurrent downloads)
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    futures = {executor.submit(download_segment, idx, seg): idx 
+                              for idx, seg in enumerate(segments, 1)}
                     
-                    logger.info(f"Downloaded segment {idx}: {output_path}")
+                    for future in as_completed(futures):
+                        try:
+                            segment_info = future.result()
+                            downloaded_segments.append(segment_info)
+                        except Exception as e:
+                            idx = futures[future]
+                            logger.error(f"Failed to download segment {idx}: {str(e)}")
+                            raise
+                
+                # Sort by segment_id to maintain order
+                downloaded_segments.sort(key=lambda x: x['segment_id'])
             
             return downloaded_segments
         
