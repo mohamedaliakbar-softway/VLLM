@@ -79,7 +79,7 @@ function Landing() {
           Transform Videos into
           <div className="relative mt-4 max-w-2xl mx-auto">
             {/* Liquid Glass Container */}
-            <div className="relative h-20 sm:h-24 rounded-2xl overflow-hidden backdrop-blur-2xl bg-gradient-to-br from-[#1E201E]/90 via-[#1E201E]/80 to-black/90 border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
+            <div className="relative rounded-2xl overflow-hidden backdrop-blur-2xl bg-gradient-to-br from-[#1E201E]/90 via-[#1E201E]/80 to-black/90 border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
               {/* Background pattern for glass effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-gray-900/30 to-black/20"></div>
               

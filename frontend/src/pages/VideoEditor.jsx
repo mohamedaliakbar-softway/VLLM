@@ -1068,7 +1068,7 @@ function VideoEditor() {
   }, [captions, showCaptionPreview]);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Top Navigation */}
       <div className="border-b border-gray-200 bg-white px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -1578,7 +1578,7 @@ function VideoEditor() {
           </div>
 
           {/* Timeline Section */}
-          <div className="border-t border-gray-200 bg-gray-50 p-4">
+          <div className="border-t border-gray-200 bg-gray-50 p-4 flex-shrink-0 max-h-[300px] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-sm font-semibold text-gray-900">Timeline</h4>
               <div className="flex gap-2">
@@ -1642,7 +1642,7 @@ function VideoEditor() {
               </div>
             )}
 
-            <ScrollArea className="w-full">
+            <ScrollArea className="w-full flex-1 min-h-0">
               <div className="flex gap-3 pb-2">
                 {isProcessing ? (
                   <div className="w-full text-center py-8 text-gray-500">
