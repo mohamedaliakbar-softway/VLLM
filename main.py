@@ -17,6 +17,8 @@ from services.ai_agent import VideoEditingAgent
 from services.video_clipper import VideoClipper
 from services.progress_tracker import progress_tracker
 from services.youtube_data_api import YouTubeDataAPI
+from services.caption_generator import CaptionGenerator
+from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
 from models import Project, Short
 
@@ -894,6 +896,235 @@ async def generate_thumbnail_prompt(request: GenerateThumbnailPromptRequest):
         }
     finally:
         db.close()
+
+
+# ============================================================================
+# CAPTION GENERATION ENDPOINTS
+# ============================================================================
+
+# In-memory caption storage (upgrade to database in production)
+captions_storage = {}
+
+@app.post("/api/v1/clips/{clip_id}/generate-captions")
+async def generate_captions(clip_id: int, background_tasks: BackgroundTasks):
+    """Generate captions for a video clip using Gemini AI"""
+    try:
+        db = SessionLocal()
+        try:
+            # Get clip/short from database
+            short = db.query(Short).filter(Short.id == clip_id).first()
+            
+            if not short:
+                raise HTTPException(status_code=404, detail="Clip not found")
+            
+            # Get video file path
+            video_path = short.file_path
+            if not video_path or not Path(video_path).exists():
+                raise HTTPException(status_code=404, detail="Video file not found")
+            
+            # Create background job
+            job_id = str(uuid.uuid4())
+            
+            # Add background task
+            background_tasks.add_task(
+                generate_captions_task,
+                job_id=job_id,
+                clip_id=clip_id,
+                video_path=video_path
+            )
+            
+            return {
+                "job_id": job_id,
+                "status": "processing",
+                "message": "Generating captions from video audio..."
+            }
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def generate_captions_task(job_id: str, clip_id: int, video_path: str):
+    """Background task to generate captions"""
+    try:
+        # Update progress
+        await progress_tracker.update_progress(job_id, "processing", 10, "Extracting audio...")
+        
+        # Initialize caption generator
+        generator = CaptionGenerator()
+        
+        # Generate captions
+        await progress_tracker.update_progress(job_id, "processing", 30, "Transcribing audio with AI...")
+        caption_file = generator.generate_caption_file(clip_id, video_path)
+        
+        # Load caption data
+        import json
+        with open(caption_file, 'r', encoding='utf-8') as f:
+            captions_data = json.load(f)
+        
+        await progress_tracker.update_progress(job_id, "processing", 80, "Finalizing captions...")
+        
+        # Store captions
+        captions_storage[clip_id] = captions_data
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "completed",
+            100,
+            "Captions generated successfully",
+            result={
+                "captions": captions_data,
+                "caption_file": caption_file
+            }
+        )
+        
+    except RuntimeError as e:
+        await progress_tracker.update_progress(
+            job_id,
+            "failed",
+            0,
+            f"Caption generation failed: {str(e)}"
+        )
+
+
+@app.get("/api/v1/clips/{clip_id}/captions")
+async def get_captions(clip_id: int):
+    """Get generated captions for a clip"""
+    if clip_id not in captions_storage:
+        raise HTTPException(
+            status_code=404,
+            detail="Captions not found. Generate them first using /generate-captions"
+        )
+    
+    return {
+        "clip_id": clip_id,
+        "captions": captions_storage[clip_id],
+        "available_styles": list(CAPTION_STYLES.keys()),
+        "styles": {
+            key: value["name"]
+            for key, value in CAPTION_STYLES.items()
+        }
+    }
+
+
+@app.post("/api/v1/clips/{clip_id}/apply-captions")
+async def apply_captions(
+    clip_id: int,
+    style_name: str,
+    background_tasks: BackgroundTasks
+):
+    """Burn captions into video with selected style"""
+    try:
+        # Validate style
+        if style_name not in CAPTION_STYLES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid style. Choose from: {list(CAPTION_STYLES.keys())}"
+            )
+        
+        # Check if captions exist
+        if clip_id not in captions_storage:
+            raise HTTPException(
+                status_code=404,
+                detail="Captions not found. Generate them first using /generate-captions"
+            )
+        
+        # Get clip from database
+        db = SessionLocal()
+        try:
+            short = db.query(Short).filter(Short.id == clip_id).first()
+            
+            if not short:
+                raise HTTPException(status_code=404, detail="Clip not found")
+            
+            video_path = short.file_path
+            if not video_path or not Path(video_path).exists():
+                raise HTTPException(status_code=404, detail="Video file not found")
+            
+            captions = captions_storage[clip_id]
+            
+            # Create background job
+            job_id = str(uuid.uuid4())
+            
+            background_tasks.add_task(
+                burn_captions_task,
+                job_id=job_id,
+                clip_id=clip_id,
+                video_path=video_path,
+                captions=captions["words"],
+                style_name=style_name
+            )
+            
+            return {
+                "job_id": job_id,
+                "status": "processing",
+                "message": f"Applying {CAPTION_STYLES[style_name]['name']} style..."
+            }
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def burn_captions_task(
+    job_id: str,
+    clip_id: int,
+    video_path: str,
+    captions: list,
+    style_name: str
+):
+    """Background task to burn captions into video"""
+    try:
+        await progress_tracker.update_progress(job_id, "processing", 20, "Preparing caption render...")
+        
+        # Initialize caption burner
+        burner = CaptionBurner()
+        
+        # Generate output path
+        output_path = str(Path(video_path).with_stem(f"{Path(video_path).stem}_captioned_{style_name}"))
+        
+        await progress_tracker.update_progress(job_id, "processing", 40, "Rendering captions into video...")
+        
+        # Burn captions
+        result_path = burner.burn_captions(video_path, captions, style_name, output_path)
+        
+        await progress_tracker.update_progress(job_id, "processing", 90, "Updating database...")
+        
+        # Update database with new file path
+        db = SessionLocal()
+        try:
+            short = db.query(Short).filter(Short.id == clip_id).first()
+            if short:
+                short.file_path = result_path
+                short.has_captions = True
+                db.commit()
+        finally:
+            db.close()
+        
+        await progress_tracker.update_progress(
+            job_id,
+            "completed",
+            100,
+            "Captions applied successfully",
+            result={
+                "new_file_path": result_path,
+                "style": style_name
+            }
+        )
+        
+    except RuntimeError as e:
+        await progress_tracker.update_progress(
+            job_id,
+            "failed",
+            0,
+            f"Caption burning failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
