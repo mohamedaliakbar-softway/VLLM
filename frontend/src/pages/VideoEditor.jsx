@@ -112,17 +112,7 @@ function VideoEditor() {
   const [selectedCaptionStyle, setSelectedCaptionStyle] =
     useState("bold_modern");
   const [showCaptionPreview, setShowCaptionPreview] = useState(false);
-  const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
   const [currentCaption, setCurrentCaption] = useState('');
-  const [visibleCaptions, setVisibleCaptions] = useState([]);
-
-  // Brand Logo states
-  const [brandLogo, setBrandLogo] = useState(null);
-  const [isApplyingLogo, setIsApplyingLogo] = useState(false);
-  const fileInputRef = useRef(null);
-
-  // Video container state - starts landscape, becomes portrait when video loads
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
   // Available caption styles
   const CAPTION_STYLES = {
@@ -477,7 +467,7 @@ function VideoEditor() {
   };
 
   const formatTimeDisplay = (seconds) => {
-    if (!seconds || isNaN(seconds)) return "0:00";
+    if (!seconds || Number.isNaN(seconds)) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -679,11 +669,12 @@ function VideoEditor() {
         await generateCaptions();
         break;
 
-      case "apply_caption_style":
+      case "apply_caption_style": {
         const style = parameters.style || "bold_modern";
         setSelectedCaptionStyle(style);
         await applyCaptionStyle(style);
         break;
+      }
 
       default:
         console.log("Unknown action:", action);
@@ -854,44 +845,9 @@ function VideoEditor() {
     }, 2000);
   };
 
-  const handleDuplicateClip = () => {
-    if (!selectedClip) return;
-
-    const newClip = {
-      ...selectedClip,
-      id: clips.length + 1,
-      title: `${selectedClip.title} (Copy)`,
-    };
-    setClips([...clips, newClip]);
-    setChatHistory((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "✅ Clip duplicated successfully!",
-      },
-    ]);
-  };
-
-  const handleDeleteClip = () => {
-    if (!selectedClip || clips.length <= 1) return;
-
-    const newClips = clips.filter((_, idx) => idx !== selectedClipIndex);
-    setClips(newClips);
-    setSelectedClipIndex(Math.max(0, selectedClipIndex - 1));
-    setChatHistory((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "🗑️ Clip deleted successfully!",
-      },
-    ]);
-  };
-
   // Caption generation functions
   const generateCaptions = async () => {
     if (!selectedClip) return;
-
-    setIsGeneratingCaptions(true);
 
     try {
       setChatHistory((prev) => [
@@ -923,7 +879,6 @@ function VideoEditor() {
           timestamp: new Date().toISOString(),
         },
       ]);
-      setIsGeneratingCaptions(false);
     }
   };
 
@@ -945,7 +900,6 @@ function VideoEditor() {
 
           setCaptions(captionsResponse.data.captions);
           setShowCaptionPreview(true);
-          setIsGeneratingCaptions(false);
 
           setChatHistory((prev) => [
             ...prev,
@@ -958,7 +912,6 @@ function VideoEditor() {
           ]);
         } else if (status === "failed") {
           clearInterval(pollInterval);
-          setIsGeneratingCaptions(false);
           setChatHistory((prev) => [
             ...prev,
             {
@@ -970,7 +923,6 @@ function VideoEditor() {
         }
       } catch (error) {
         clearInterval(pollInterval);
-        setIsGeneratingCaptions(false);
         console.error("Caption poll error:", error);
       }
     }, 2000);
@@ -1103,13 +1055,10 @@ function VideoEditor() {
         word => time >= word.start && time <= word.end
       );
       
-      if (activeWordIndex !== -1) {
+      if (activeWordIndex >= 0) {
         // Show current word and next word (2 lines visible)
-        const visibleWords = currentWords.slice(activeWordIndex, activeWordIndex + 2);
-        setVisibleCaptions(visibleWords);
         setCurrentCaption(currentWords[activeWordIndex].word);
       } else {
-        setVisibleCaptions([]);
         setCurrentCaption("");
       }
     };
@@ -1137,7 +1086,7 @@ function VideoEditor() {
             aria-label={
               isLeftPanelVisible ? "Hide Copilot panel" : "Show Copilot panel"
             }
-            className={!isLeftPanelVisible ? "bg-gray-100" : ""}
+            className={isLeftPanelVisible ? "" : "bg-gray-100"}
           >
             <PanelLeft className="h-4 w-4" />
           </Button>
@@ -1184,6 +1133,8 @@ function VideoEditor() {
             <div
               className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-gray-100 z-10 flex items-center justify-center"
               onMouseDown={handleResizeStart}
+              role="separator"
+              aria-orientation="vertical"
               aria-label="Resize chat panel"
             >
               <GripVertical className="h-4 w-4 text-gray-400 pointer-events-none" />
@@ -1387,13 +1338,26 @@ function VideoEditor() {
                             {loadingSteps.map((step, index) => {
                               const isCompleted = currentLoadingStep > index;
                               const isCurrent = currentLoadingStep === index;
-                              const isUpcoming = currentLoadingStep < index;
 
                               // Only show current step and next step (2 lines visible)
                               const shouldShow =
                                 index === currentLoadingStep ||
                                 index === currentLoadingStep + 1;
                               if (!shouldShow) return null;
+
+                              let stepClassName = "bg-white/20";
+                              if (isCompleted) {
+                                stepClassName = "bg-green-500";
+                              } else if (isCurrent) {
+                                stepClassName = "bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse";
+                              }
+
+                              let textClassName = "text-gray-500";
+                              if (isCompleted) {
+                                textClassName = "text-gray-400 line-through";
+                              } else if (isCurrent) {
+                                textClassName = "text-white";
+                              }
 
                               return (
                                 <div
@@ -1408,7 +1372,7 @@ function VideoEditor() {
                                     <div
                                       className={`
                                     w-5 h-5 rounded-full flex items-center justify-center transition-all duration-500
-                                    ${isCompleted ? "bg-green-500" : isCurrent ? "bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse" : "bg-white/20"}
+                                    ${stepClassName}
                                   `}
                                     >
                                       {isCompleted && (
@@ -1433,7 +1397,7 @@ function VideoEditor() {
                                     <span
                                       className={`
                                     text-sm font-medium transition-all duration-500
-                                    ${isCompleted ? "text-gray-400 line-through" : isCurrent ? "text-white" : "text-gray-500"}
+                                    ${textClassName}
                                   `}
                                     >
                                       {step.text}
@@ -1518,8 +1482,18 @@ function VideoEditor() {
                         <div
                           className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer mb-3 hover:h-2 transition-all relative group"
                           onClick={handleProgressClick}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleProgressClick(e);
+                            }
+                          }}
                           role="progressbar"
                           aria-label="Video progress"
+                          aria-valuenow={currentTime}
+                          aria-valuemin={0}
+                          aria-valuemax={duration}
+                          tabIndex={0}
                         >
                           <div
                             className="h-full bg-gradient-to-r from-[#1E201E] via-purple-600 to-pink-500 rounded-full transition-all shadow-lg shadow-[#1E201E]/50 relative"
@@ -1564,7 +1538,18 @@ function VideoEditor() {
                             <div
                               className="w-20 h-1.5 bg-white/20 rounded-full cursor-pointer hover:h-2 transition-all"
                               onClick={handleVolumeChange}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleVolumeChange(e);
+                                }
+                              }}
                               role="slider"
+                              aria-label="Volume"
+                              aria-valuenow={isMuted ? 0 : Math.round(volume * 100)}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              tabIndex={0}
                             >
                               <div
                                 className="h-full bg-white rounded-full transition-all"
@@ -1957,10 +1942,11 @@ function VideoEditor() {
               disabled={selectedPlatforms.length === 0}
             >
               <Share2 className="h-4 w-4 mr-2" />
-              Publish to{" "}
-              {selectedPlatforms.length > 0
-                ? `${selectedPlatforms.length} Platform${selectedPlatforms.length > 1 ? "s" : ""}`
-                : "Platforms"}
+              {(() => {
+                if (selectedPlatforms.length === 0) return "Publish to Platforms";
+                const platformText = selectedPlatforms.length > 1 ? "Platforms" : "Platform";
+                return `Publish to ${selectedPlatforms.length} ${platformText}`;
+              })()}
             </Button>
           </DialogFooter>
         </DialogContent>
