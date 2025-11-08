@@ -60,9 +60,6 @@ function Landing() {
               <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</a>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" onClick={() => navigate('/dashboard')}>
-                Sign In
-              </Button>
               <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
                 <Sparkles className="h-4 w-4" />
                 Get Started
