@@ -28,9 +28,24 @@ function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white relative overflow-hidden">
+      {/* Circular Gradient Background Loader */}
+      <div className="loader-wrapper loader-wrapper-home">
+        <span className="loader-letter">G</span>
+        <span className="loader-letter">e</span>
+        <span className="loader-letter">n</span>
+        <span className="loader-letter">e</span>
+        <span className="loader-letter">r</span>
+        <span className="loader-letter">a</span>
+        <span className="loader-letter">t</span>
+        <span className="loader-letter">i</span>
+        <span className="loader-letter">n</span>
+        <span className="loader-letter">g</span>
+        <div className="loader"></div>
+      </div>
+
       {/* Navigation Bar */}
-      <nav className="border-b border-gray-200 bg-white">
+      <nav className="border-b border-gray-200 bg-white/80 backdrop-blur-sm relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
@@ -58,7 +73,7 @@ function Landing() {
       </nav>
 
       {/* Hero Section */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center relative z-10">
         <Badge variant="outline" className="mb-8 inline-flex items-center gap-2 border-gray-300 text-gray-700">
           <Sparkles className="h-4 w-4" />
           AI-Powered Video Highlights

@@ -867,8 +867,10 @@ function VideoEditor() {
                     <span className="loader-letter">g</span>
                     <div className="loader"></div>
                   </div>
-                  <p className="text-lg font-medium text-white text-center mt-6">{processingStatus}</p>
-                  <p className="text-sm text-white/80 text-center mt-2">{Math.round(processingProgress)}%</p>
+                  <div className="relative z-10 text-center">
+                    <p className="text-lg font-medium text-white">{processingStatus}</p>
+                    <p className="text-sm text-white/80 mt-2">{Math.round(processingProgress)}%</p>
+                  </div>
                 </div>
               </div>
             ) : (
