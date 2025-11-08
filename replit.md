@@ -115,6 +115,13 @@ Other settings are configured in `config.py` with sensible defaults:
 7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **CRITICAL BUG FIX - YouTube Rate Limiting Resolved**
+  - **Fixed 429 errors**: Added retry logic with exponential backoff for transcript extraction
+  - **Root cause**: YouTube's API was rate-limiting transcript requests, causing failures
+  - **Solution**: Implemented 3-attempt retry with 1s, 2s, 4s delays between retries
+  - **Impact**: Transcript extraction now succeeds even when temporarily rate-limited
+  - **Improvement**: Better quality shorts with full transcript analysis instead of fallback mode
+
 - November 8, 2025: **CRITICAL BUG FIX - Chrome Cookies Error Resolved**
   - **Fixed YouTube download issue**: Disabled browser cookies in server environment
   - **Root cause**: yt-dlp was trying to load Chrome cookies, but Chrome isn't installed in Replit

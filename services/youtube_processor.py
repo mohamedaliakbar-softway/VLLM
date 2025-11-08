@@ -214,9 +214,26 @@ class YouTubeProcessor:
                         preferred = tracks[0]
                     subtitle_url = preferred.get('url')
                     import requests
-                    resp = requests.get(subtitle_url)
-                    resp.raise_for_status()
-                    transcript_text = self._parse_subtitles(resp.text)
+                    import time
+                    
+                    # Retry logic with exponential backoff for rate limiting
+                    max_retries = 3
+                    retry_delay = 1  # Start with 1 second
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            resp = requests.get(subtitle_url, timeout=10)
+                            resp.raise_for_status()
+                            transcript_text = self._parse_subtitles(resp.text)
+                            break  # Success, exit retry loop
+                        except requests.exceptions.HTTPError as http_err:
+                            if http_err.response.status_code == 429 and attempt < max_retries - 1:
+                                # Rate limited - wait and retry
+                                logger.warning(f"Rate limited (429) on attempt {attempt + 1}, retrying in {retry_delay}s...")
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                            else:
+                                raise  # Re-raise on last attempt or non-429 errors
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
