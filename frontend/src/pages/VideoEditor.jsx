@@ -276,25 +276,53 @@ function VideoEditor() {
     if (clips.length === 0) return;
     
     try {
+      const clip = clips[selectedClipIndex];
+      
       // Show notification
       setChatHistory(prev => [...prev, { 
         role: 'assistant', 
-        content: '📥 Exporting video to dashboard...' 
+        content: '📥 Downloading video...',
+        timestamp: new Date().toISOString()
       }]);
 
-      // Simulate export process
-      setTimeout(() => {
-        setChatHistory(prev => [...prev, { 
-          role: 'assistant', 
-          content: '✅ Video exported successfully! You can find it in your dashboard.' 
-        }]);
-      }, 2000);
+      // Get the video URL - use download_url if available, otherwise construct it
+      const videoUrl = clip.download_url || `/api/v1/download/${clip.filename}`;
+      
+      // Fetch the video file
+      const response = await axios.get(videoUrl, {
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setProcessingStatus(`Downloading... ${percentCompleted}%`);
+          }
+        }
+      });
+
+      // Create blob URL and trigger download
+      const blob = new Blob([response.data], { type: 'video/mp4' });
+      const url = globalThis.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = clip.filename || `short_${clip.title || selectedClipIndex + 1}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      globalThis.URL.revokeObjectURL(url);
+
+      // Success notification
+      setChatHistory(prev => [...prev, { 
+        role: 'assistant', 
+        content: `✅ Video "${clip.title}" downloaded successfully!`,
+        timestamp: new Date().toISOString()
+      }]);
     } catch (error) {
       setChatHistory(prev => [...prev, { 
         role: 'assistant', 
-        content: '❌ Failed to export video. Please try again.' 
+        content: '❌ Failed to download video. Please try again.',
+        timestamp: new Date().toISOString()
       }]);
-      console.error('Export error:', error);
+      console.error('Download error:', error);
     }
   };
 

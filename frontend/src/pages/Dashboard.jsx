@@ -4,10 +4,12 @@ import {
   Video, Play, Trash2, Download, Calendar, TrendingUp, ArrowLeft, 
   BarChart3, Eye, Plus, Sparkles, Film
 } from 'lucide-react';
+import axios from 'axios';
 
 function Dashboard() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [stats, setStats] = useState({
     totalVideos: 0,
@@ -53,6 +55,37 @@ function Dashboard() {
   const handleDelete = async (videoId) => {
     if (globalThis.confirm('Are you sure you want to delete this video and all its shorts?')) {
       setVideos(videos.filter(v => v.id !== videoId));
+    }
+  };
+
+  const handleDownload = async (video) => {
+    setDownloadingId(video.id);
+    
+    try {
+      // Construct download URL - adjust based on your API
+      const downloadUrl = video.download_url || `/api/v1/download/${video.filename || video.id}`;
+      
+      // Fetch the video file
+      const response = await axios.get(downloadUrl, {
+        responseType: 'blob'
+      });
+
+      // Create blob URL and trigger download
+      const blob = new Blob([response.data], { type: 'video/mp4' });
+      const url = globalThis.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${video.title.replaceAll(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      globalThis.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      globalThis.alert('Failed to download video. Please try again.');
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -231,9 +264,13 @@ function Dashboard() {
                       <Play size={16} />
                       Edit
                     </button>
-                    <button className="action-btn">
+                    <button 
+                      className="action-btn" 
+                      onClick={() => handleDownload(video)}
+                      disabled={downloadingId === video.id}
+                    >
                       <Download size={16} />
-                      Download
+                      {downloadingId === video.id ? 'Downloading...' : 'Download'}
                     </button>
                     <button className="action-btn danger" onClick={() => handleDelete(video.id)}>
                       <Trash2 size={16} />
