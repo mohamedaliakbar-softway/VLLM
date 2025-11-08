@@ -22,6 +22,7 @@ from services.caption_generator import CaptionGenerator
 from services.caption_burner import CaptionBurner, CAPTION_STYLES
 from database import get_db, SessionLocal
 from models import Project, Short, Publication, AccountToken
+from migrate import main as run_migrations
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +46,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Run database migrations on startup
+@app.on_event("startup")
+async def startup_event():
+    """Run database migrations on startup."""
+    try:
+        run_migrations()
+        logger.info("Database migrations completed successfully")
+    except Exception as e:
+        logger.error(f"Error running migrations: {e}")
 
 # Initialize services
 youtube_processor = YouTubeProcessor()
