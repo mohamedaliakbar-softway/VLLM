@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
     
     # Gemini API
-    gemini_api_key: str  # Required - must be set in .env file
+    gemini_api_key: Optional[str] = None  # Optional - set in environment or .env file
     
     # YouTube Data API
     youtube_api_key: Optional[str] = None  # Optional - for YouTube Data API features

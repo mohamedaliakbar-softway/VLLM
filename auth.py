@@ -62,10 +62,10 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
     try:
         token = await oauth.replit.authorize_access_token(request)
         
-        user_claims = jwt.decode(
-            token["id_token"],
-            options={"verify_signature": False}
-        )
+        user_claims = token.get("userinfo")
+        if not user_claims:
+            id_token_claims = await oauth.replit.parse_id_token(request, token)
+            user_claims = id_token_claims
         
         user = db.query(User).filter(User.id == user_claims["sub"]).first()
         
