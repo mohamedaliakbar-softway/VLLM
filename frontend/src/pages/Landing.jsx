@@ -9,24 +9,18 @@ function Landing() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
-
-    try {
-      const response = await axios.post('/api/v1/generate-shorts', {
-        youtube_url: youtubeUrl,
-        max_shorts: 3,
-      });
-
-      const jobId = response.data.job_id;
-      
-      navigate('/video-editor', { state: { jobId, youtubeUrl } });
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to process video. Please try again.');
-      setLoading(false);
+    
+    // Validate YouTube URL format
+    if (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
+      setError('Please enter a valid YouTube URL');
+      return;
     }
+
+    // Redirect to editor with YouTube URL - processing will happen there
+    navigate('/editor', { state: { youtubeUrl } });
   };
 
   return (
@@ -86,19 +80,10 @@ function Landing() {
             disabled={loading}
             className="hero-input"
           />
-          <button type="submit" disabled={loading || !youtubeUrl} className="hero-generate-btn">
-            {loading ? (
-              <>
-                <div className="spinner"></div>
-                Processing...
-              </>
-            ) : (
-              <>
-                <Sparkles size={18} />
-                Generate
-                <ArrowRight size={18} />
-              </>
-            )}
+          <button type="submit" disabled={!youtubeUrl} className="hero-generate-btn">
+            <Sparkles size={18} />
+            Generate
+            <ArrowRight size={18} />
           </button>
         </form>
 
