@@ -77,7 +77,64 @@ function Landing() {
         
         <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-6">
           Transform Videos into
-          <span className="block h-16 bg-gradient-to-r from-[#1E201E] to-gray-600 rounded-lg mt-2 max-w-2xl mx-auto"></span>
+          <div className="relative mt-4 max-w-2xl mx-auto">
+            {/* Liquid Glass Container */}
+            <div className="relative h-20 sm:h-24 rounded-2xl overflow-hidden backdrop-blur-2xl bg-gradient-to-br from-[#1E201E]/90 via-[#1E201E]/80 to-black/90 border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
+              {/* Background pattern for glass effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-gray-900/30 to-black/20"></div>
+              
+              {/* Animated liquid effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/5 to-transparent opacity-40"></div>
+              
+              {/* Shimmer shine effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 animate-shimmer"></div>
+              
+              {/* Inner glow */}
+              <div className="absolute inset-[1px] rounded-2xl bg-gradient-to-b from-white/5 to-transparent"></div>
+              
+              {/* Highlights text */}
+              <div className="relative h-full flex items-center justify-center z-10">
+                <span className="relative text-3xl sm:text-4xl font-bold inline-block">
+                  {/* Main text with liquid glass effect */}
+                  <span 
+                    className="relative z-10 text-white"
+                    style={{
+                      textShadow: `
+                        0 0 10px rgba(255, 255, 255, 0.5),
+                        0 0 20px rgba(255, 255, 255, 0.3),
+                        0 0 30px rgba(255, 255, 255, 0.2),
+                        0 2px 4px rgba(0, 0, 0, 0.3)
+                      `,
+                      filter: 'blur(0.5px)',
+                      WebkitTextStroke: '0.5px rgba(255, 255, 255, 0.3)'
+                    }}
+                  >
+                    Highlights
+                  </span>
+                  {/* Animated glass shine overlay */}
+                  <span 
+                    className="absolute inset-0 text-white/60 pointer-events-none overflow-hidden"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      transform: 'skewX(-12deg)',
+                      animation: 'shimmer 3s infinite'
+                    }}
+                  >
+                    Highlights
+                  </span>
+                  {/* Glow layer behind text */}
+                  <span 
+                    className="absolute inset-0 text-white/20 blur-md -z-10"
+                  >
+                    Highlights
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
         </h1>
 
         <p className="text-lg sm:text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
