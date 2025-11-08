@@ -26,9 +26,10 @@ from services.progress_tracker import progress_tracker
 from services.youtube_data_api import YouTubeDataAPI
 from services.caption_generator import CaptionGenerator
 from services.caption_burner import CaptionBurner, CAPTION_STYLES
-from database import get_db, SessionLocal
-from models import Project, Short, Publication, AccountToken
-from migrate import main as run_migrations
+# DATABASE DISABLED - Using in-memory storage only
+# from database import get_db, SessionLocal
+# from models import Project, Short, Publication, AccountToken
+# from migrate import main as run_migrations
 from utils.logging_decorator import log_async_execution, StepLogger
 import traceback
 
@@ -210,7 +211,8 @@ jobs = {}
 
 async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, platform: str):
     """Background task to process video and emit progress updates (OPTIMIZED FOR 20 SECONDS)."""
-    db = SessionLocal()
+    # DATABASE DISABLED - Using in-memory storage only
+    # db = SessionLocal()
     logger.info("========== STARTING VIDEO PROCESSING ==========")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"YouTube URL: {youtube_url}")
@@ -221,17 +223,18 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
     try:
         jobs[job_id] = {"status": "processing", "progress": 0}
         
-        # Create project record in database
-        with StepLogger("Create Database Project", {"job_id": job_id}):
-            project = Project(
-                id=job_id,
-                youtube_url=str(youtube_url),
-                video_id="",  # Will be updated after extracting video info
-                status="processing"
-            )
-            db.add(project)
-            db.commit()
-            logger.info(f"Project {job_id} created in database")
+        # DATABASE DISABLED - Project tracking now in-memory only via jobs dict
+        # # Create project record in database
+        # with StepLogger("Create Database Project", {"job_id": job_id}):
+        #     project = Project(
+        #         id=job_id,
+        #         youtube_url=str(youtube_url),
+        #         video_id="",  # Will be updated after extracting video info
+        #         status="processing"
+        #     )
+        #     db.add(project)
+        #     db.commit()
+        #     logger.info(f"Project {job_id} created in database")
         
         # STEP 1 & 2: Extract transcript and analyze with retry mechanism
         max_retries = settings.highlight_retry_max_attempts
@@ -312,19 +315,25 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                     # Use existing video_info data - no need to call get_video_info() again
                     video_info['transcript'] = f"{video_info.get('title', '')}. {video_info.get('description', '')}"
                 
-                # Update project with video details and cache transcript (only on first successful attempt)
+                # DATABASE DISABLED - Video info now stored in jobs dict only
+                # # Update project with video details and cache transcript (only on first successful attempt)
+                # if attempt == 1:
+                #     with StepLogger("Update Project Details"):
+                #         project.video_id = video_info.get('video_id', '')
+                #         project.video_title = video_info.get('title', '')
+                #         project.video_duration = video_info.get('duration', 0)
+                #         # Cache transcript and description to reduce future API calls
+                #         project.transcript = video_info.get('transcript', '')
+                #         project.video_description = video_info.get('description', '')
+                #         project.transcript_fetched_at = datetime.utcnow()
+                #         db.commit()
+                #         logger.info(f"Project updated: video_id={project.video_id}, title={project.video_title}, duration={project.video_duration}s")
+                #         logger.info(f"Transcript cached: {len(project.transcript)} chars")
+                
+                # Log video info (no DB storage)
                 if attempt == 1:
-                    with StepLogger("Update Project Details"):
-                        project.video_id = video_info.get('video_id', '')
-                        project.video_title = video_info.get('title', '')
-                        project.video_duration = video_info.get('duration', 0)
-                        # Cache transcript and description to reduce future API calls
-                        project.transcript = video_info.get('transcript', '')
-                        project.video_description = video_info.get('description', '')
-                        project.transcript_fetched_at = datetime.utcnow()
-                        db.commit()
-                        logger.info(f"Project updated: video_id={project.video_id}, title={project.video_title}, duration={project.video_duration}s")
-                        logger.info(f"Transcript cached: {len(project.transcript)} chars")
+                    logger.info(f"Video info: video_id={video_info.get('video_id', '')}, title={video_info.get('title', '')}, duration={video_info.get('duration', 0)}s")
+                    logger.info(f"Transcript length: {len(video_info.get('transcript', ''))} chars")
                 
                 # STEP 2: Analyze transcript with Gemini (3-5 seconds) - MUCH FASTER than video analysis
                 if attempt == 1:
@@ -398,9 +407,10 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                         logger.warning(f"Job {job_id}: {error_msg}")
                         await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found after retries")
                         jobs[job_id] = {"status": "failed", "error": "No highlights found"}
-                        project.status = "failed"
-                        project.error_message = error_msg
-                        db.commit()
+                        # DATABASE DISABLED
+                        # project.status = "failed"
+                        # project.error_message = error_msg
+                        # db.commit()
                         return
             
             except RuntimeError:
@@ -419,9 +429,10 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             logger.error(f"Job {job_id}: {error_msg}")
             await progress_tracker.update_progress(job_id, "failed", 100, "No suitable highlights found after retries")
             jobs[job_id] = {"status": "failed", "error": "No highlights found"}
-            project.status = "failed"
-            project.error_message = error_msg
-            db.commit()
+            # DATABASE DISABLED
+            # project.status = "failed"
+            # project.error_message = error_msg
+            # db.commit()
             return
         
         max_shorts = min(max_shorts or settings.max_highlights, len(highlights))
@@ -454,9 +465,10 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             logger.error(error_msg)
             await progress_tracker.update_progress(job_id, "failed", 100, error_msg)
             jobs[job_id] = {"status": "failed", "error": error_msg}
-            project.status = "failed"
-            project.error_message = error_msg
-            db.commit()
+            # DATABASE DISABLED
+            # project.status = "failed"
+            # project.error_message = error_msg
+            # db.commit()
             return
         
         # STEP 4: Create shorts with MoviePy and smart cropping in parallel (5-10 seconds) - proper landscape-to-portrait conversion
@@ -486,9 +498,10 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
             logger.error(error_msg)
             await progress_tracker.update_progress(job_id, "failed", 100, error_msg)
             jobs[job_id] = {"status": "failed", "error": error_msg}
-            project.status = "failed"
-            project.error_message = error_msg
-            db.commit()
+            # DATABASE DISABLED
+            # project.status = "failed"
+            # project.error_message = error_msg
+            # db.commit()
             return
         
         # Helper function to convert timestamp string to seconds
@@ -503,47 +516,51 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
                 return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
             return 0.0
         
+        # Helper function to format seconds as timestamp
+        def seconds_to_timestamp(seconds):
+            """Convert seconds to MM:SS format"""
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins:02d}:{secs:02d}"
+        
         shorts_info = []
         for idx, short in enumerate(created_shorts):
-            # Save short to database
-            db_short = Short(
-                id=str(uuid.uuid4()),
-                project_id=job_id,
-                filename=short["filename"],
-                title=short.get("title", f"Highlight {idx + 1}"),
-                start_time=timestamp_to_seconds(short["start_time"]),
-                end_time=timestamp_to_seconds(short["end_time"]),
-                duration_seconds=short["duration_seconds"],
-                engagement_score=short["engagement_score"],
-                marketing_effectiveness=short["marketing_effectiveness"],
-                suggested_cta=short["suggested_cta"]
-            )
-            db.add(db_short)
+            # DATABASE DISABLED - Create in-memory short info only
+            short_id = str(uuid.uuid4())
             
-            # Helper function to format seconds as timestamp
-            def seconds_to_timestamp(seconds):
-                """Convert seconds to MM:SS format"""
-                mins = int(seconds // 60)
-                secs = int(seconds % 60)
-                return f"{mins:02d}:{secs:02d}"
+            # # Save short to database
+            # db_short = Short(
+            #     id=short_id,
+            #     project_id=job_id,
+            #     filename=short["filename"],
+            #     title=short.get("title", f"Highlight {idx + 1}"),
+            #     start_time=timestamp_to_seconds(short["start_time"]),
+            #     end_time=timestamp_to_seconds(short["end_time"]),
+            #     duration_seconds=short["duration_seconds"],
+            #     engagement_score=short["engagement_score"],
+            #     marketing_effectiveness=short["marketing_effectiveness"],
+            #     suggested_cta=short["suggested_cta"]
+            # )
+            # db.add(db_short)
             
             shorts_info.append({
-                "short_id": db_short.id,
-                "title": db_short.title,
-                "filename": db_short.filename,
-                "start_time": seconds_to_timestamp(db_short.start_time),
-                "end_time": seconds_to_timestamp(db_short.end_time),
-                "duration": db_short.duration_seconds,
-                "duration_seconds": db_short.duration_seconds,
-                "engagement_score": db_short.engagement_score,
-                "marketing_effectiveness": db_short.marketing_effectiveness,
-                "suggested_cta": db_short.suggested_cta,
-                "download_url": f"/api/v1/download/{db_short.filename}"
+                "short_id": short_id,
+                "title": short.get("title", f"Highlight {idx + 1}"),
+                "filename": short["filename"],
+                "start_time": seconds_to_timestamp(timestamp_to_seconds(short["start_time"])),
+                "end_time": seconds_to_timestamp(timestamp_to_seconds(short["end_time"])),
+                "duration": short["duration_seconds"],
+                "duration_seconds": short["duration_seconds"],
+                "engagement_score": short["engagement_score"],
+                "marketing_effectiveness": short["marketing_effectiveness"],
+                "suggested_cta": short["suggested_cta"],
+                "download_url": f"/api/v1/download/{short['filename']}"
             })
         
-        # Update project status
-        project.status = "completed"
-        db.commit()
+        # DATABASE DISABLED - Project status tracking in jobs dict only
+        # # Update project status
+        # project.status = "completed"
+        # db.commit()
         
         jobs[job_id] = {
             "status": "completed",
@@ -578,20 +595,22 @@ async def process_video_async(job_id: str, youtube_url: str, max_shorts: int, pl
         jobs[job_id] = {"status": "failed", "error": user_error_msg}
         await progress_tracker.update_progress(job_id, "failed", 100, f"Error: {user_error_msg}")
         
-        # Update project status in database
-        try:
-            project = db.query(Project).filter(Project.id == job_id).first()
-            if project:
-                project.status = "failed"
-                project.error_message = user_error_msg
-                db.commit()
-                logger.info(f"Project {job_id} marked as failed in database")
-        except Exception as db_error:
-            logger.error(f"Failed to update database: {type(db_error).__name__}: {str(db_error)}")
+        # DATABASE DISABLED - Error tracking in jobs dict only
+        # # Update project status in database
+        # try:
+        #     project = db.query(Project).filter(Project.id == job_id).first()
+        #     if project:
+        #         project.status = "failed"
+        #         project.error_message = user_error_msg
+        #         db.commit()
+        #         logger.info(f"Project {job_id} marked as failed in database")
+        # except Exception as db_error:
+        #     logger.error(f"Failed to update database: {type(db_error).__name__}: {str(db_error)}")
     finally:
         logger.info(f"Cleaning up job {job_id}")
         progress_tracker.cleanup_job(job_id)
-        db.close()
+        # DATABASE DISABLED
+        # db.close()
         logger.info("========== VIDEO PROCESSING ENDED ==========\n")
 
 
