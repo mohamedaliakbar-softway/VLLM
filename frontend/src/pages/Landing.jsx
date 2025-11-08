@@ -1,46 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Video, Sparkles, ArrowRight, Zap, Clock, Share2, LogOut, User } from 'lucide-react';
-import axios from 'axios';
+import { Video, Sparkles, ArrowRight, Zap, Clock, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 function Landing() {
-  console.log("hi");
-  
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const response = await axios.get('/auth/me', { withCredentials: true });
-      if (response.data.authenticated) {
-        setUser(response.data.user);
-      }
-    } catch (error) {
-      console.log('Not authenticated');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleSignIn = () => {
-    window.location.href = '/auth/login';
-  };
-
-  const handleLogout = () => {
-    window.location.href = '/auth/logout';
-  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -89,42 +59,10 @@ function Landing() {
               <a href="#pricing" className="text-sm text-gray-600 hover:text-gray-900">Pricing</a>
             </div>
             <div className="flex items-center gap-3">
-              {authLoading ? (
-                <div className="h-9 w-20 bg-gray-100 animate-pulse rounded-md"></div>
-              ) : user ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    {user.profile_image_url ? (
-                      <img 
-                        src={user.profile_image_url} 
-                        alt={user.first_name || 'User'} 
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-[#1E201E] flex items-center justify-center">
-                        <User className="h-4 w-4 text-white" />
-                      </div>
-                    )}
-                    <span className="text-sm font-medium text-gray-900">
-                      {user.first_name || user.email || 'User'}
-                    </span>
-                  </div>
-                  <Button variant="ghost" onClick={handleLogout} size="sm">
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="ghost" onClick={handleSignIn}>
-                    Sign In
-                  </Button>
-                  <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={handleSignIn}>
-                    <Sparkles className="h-4 w-4" />
-                    Get Started
-                  </Button>
-                </>
-              )}
+              <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
+                <Sparkles className="h-4 w-4" />
+                Get Started
+              </Button>
             </div>
           </div>
         </div>
