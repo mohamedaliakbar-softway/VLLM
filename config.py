@@ -1,11 +1,17 @@
 """Configuration settings for the Video Shorts Generator."""
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"  # Ignore extra environment variables not defined in the model
+    )
     
     # Gemini API
     gemini_api_key: str  # Required - must be set in .env file
@@ -33,10 +39,6 @@ class Settings(BaseSettings):
     allowed_platforms: str = "linkedin,instagram,x"  # comma-separated
     max_upload_mb: int = 250  # soft limit; actual APIs may vary
     share_max_retries: int = 3
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
 
 # Platform-specific video dimensions (width, height)
