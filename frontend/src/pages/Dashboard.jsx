@@ -272,58 +272,30 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Enhanced Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Compact Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-[#1E201E] rounded-lg flex items-center justify-center">
-                  <Video className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Total Videos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalVideos}</p>
-                </div>
-              </div>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-600 mb-1">Total Videos</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalVideos}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
-                  <Film className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Generated Shorts</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalShorts}</p>
-                </div>
-              </div>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-600 mb-1">Generated Shorts</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalShorts}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
-                  <Download className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Exported Clips</p>
-                  <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
-                </div>
-              </div>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-600 mb-1">Exported Clips</p>
+              <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Ready to Share</p>
-                  <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
-                </div>
-              </div>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-600 mb-1">Ready to Share</p>
+              <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
             </CardContent>
           </Card>
         </div>
