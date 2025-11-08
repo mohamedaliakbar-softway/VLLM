@@ -297,14 +297,25 @@ function VideoEditor() {
 
           setClips(newClips);
           setIsProcessing(false);
-          setChatHistory((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: `✅ Generated ${generatedShorts.length} video highlights! Click any clip to preview.`,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
+          
+          // Only add success message if it doesn't already exist
+          setChatHistory((prev) => {
+            const successMessage = `✅ Generated ${generatedShorts.length} video highlights! Click any clip to preview.`;
+            const alreadyExists = prev.some(msg => msg.content === successMessage);
+            
+            if (alreadyExists) {
+              return prev;
+            }
+            
+            return [
+              ...prev,
+              {
+                role: "assistant",
+                content: successMessage,
+                timestamp: new Date().toISOString(),
+              },
+            ];
+          });
         } else if (status === "failed") {
           clearInterval(poll);
           
