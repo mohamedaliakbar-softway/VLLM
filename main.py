@@ -341,10 +341,9 @@ async def get_progress(job_id: str):
 
 
 @app.get("/api/v1/projects")
-async def list_projects(skip: int = 0, limit: int = 20, db: SessionLocal = None):
+async def list_projects(skip: int = 0, limit: int = 20):
     """List all projects from the database."""
-    if db is None:
-        db = SessionLocal()
+    db = SessionLocal()
     try:
         projects = db.query(Project).order_by(Project.created_at.desc()).offset(skip).limit(limit).all()
         
@@ -369,10 +368,9 @@ async def list_projects(skip: int = 0, limit: int = 20, db: SessionLocal = None)
 
 
 @app.get("/api/v1/projects/{project_id}")
-async def get_project(project_id: str, db: SessionLocal = None):
+async def get_project(project_id: str):
     """Get a specific project with all its shorts from the database."""
-    if db is None:
-        db = SessionLocal()
+    db = SessionLocal()
     try:
         project = db.query(Project).filter(Project.id == project_id).first()
         

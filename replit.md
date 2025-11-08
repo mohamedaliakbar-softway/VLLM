@@ -29,13 +29,18 @@ An AI-powered SaaS application that automatically creates engaging 15-30 second 
 - `GET /health` - Health check
 - `GET /docs` - Swagger UI documentation
 - `POST /api/v1/generate-shorts` - Generate shorts from YouTube URL
+- `GET /api/v1/job/{job_id}` - Get job status (memory-based, real-time)
+- `GET /api/v1/projects` - List all projects from database
+- `GET /api/v1/projects/{project_id}` - Get project with shorts from database
 - `GET /api/v1/download/{filename}` - Download generated short
-- `GET /api/v1/job/{job_id}` - Get job status
 - `DELETE /api/v1/shorts/{filename}` - Delete a short
+- `GET /api/v1/progress/{job_id}` - Real-time progress via Server-Sent Events
 
 ## Environment Configuration
-The application uses Replit Secrets for the Gemini API key:
+The application uses Replit Secrets and environment variables:
 - `GEMINI_API_KEY` - Required for AI video analysis
+- `DATABASE_URL` - PostgreSQL connection string (auto-configured by Replit)
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` - PostgreSQL credentials
 
 Other settings are configured in `config.py` with sensible defaults:
 - Max video duration: 30 minutes
@@ -47,12 +52,21 @@ Other settings are configured in `config.py` with sensible defaults:
 ```
 ├── main.py                    # FastAPI application entry point
 ├── config.py                  # Configuration settings
+├── database.py                # PostgreSQL database configuration
+├── models.py                  # SQLAlchemy database models (Project, Short)
+├── init_db.py                 # Database initialization script
 ├── requirements.txt           # Python dependencies
 ├── services/                  # Service layer
 │   ├── youtube_processor.py  # YouTube video download
 │   ├── gemini_analyzer.py    # AI video analysis
 │   ├── video_clipper.py      # Video clipping
 │   └── smart_cropper.py      # Smart video cropping
+├── frontend/                  # React + Vite frontend
+│   ├── src/
+│   │   ├── pages/            # Page components (Landing, VideoEditor)
+│   │   ├── utils/            # Utility functions (YouTube helpers)
+│   │   └── App.css           # Styling
+│   └── vite.config.js
 ├── temp/                      # Temporary video storage (gitignored)
 └── output/                    # Generated shorts (gitignored)
 ```
@@ -101,6 +115,16 @@ Other settings are configured in `config.py` with sensible defaults:
 7. **Publishing**: Export and share generated shorts
 
 ## Recent Changes
+- November 8, 2025: **DATABASE PERSISTENCE ADDED**
+  - **Created PostgreSQL database schema** with `projects` and `shorts` tables
+  - **Automatic saving**: All generated videos now persist to database
+  - **New API endpoints**: `/api/v1/projects` and `/api/v1/projects/{project_id}` for retrieving saved projects
+  - **SQLAlchemy ORM**: Clean database integration with models for Project and Short
+  - **Dual storage**: Memory-based for real-time job tracking, database for long-term persistence
+  - **Frontend ready**: Backend now returns proper data structure for UI display
+  - **Error tracking**: Failed jobs saved to database with error messages
+  - **Relationship mapping**: Projects automatically linked to their generated shorts
+
 - November 8, 2025: **VIDEO PROCESSING FLOW & UX IMPROVEMENTS**
   - **Instant Navigation**: Generate button now immediately redirects to editor
   - **Blurred Thumbnail Preview**: Extracts YouTube thumbnail and displays with blur effect during processing
