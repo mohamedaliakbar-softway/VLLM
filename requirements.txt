@@ -38,3 +38,7 @@ requests
 scipy
 uvicorn[standard]
 yt-dlp
+flask-dance
+flask-login
+oauthlib
+pyjwt
