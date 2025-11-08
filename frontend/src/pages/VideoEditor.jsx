@@ -4,7 +4,8 @@ import {
   Play, Pause, Download, Share2, ArrowLeft,
   Send, Plus, ChevronUp, ChevronDown, SkipForward, SkipBackIcon,
   Loader2, Scissors, Type, Volume2, Wand2, Layers, Copy, Trash2, 
-  ZoomIn, ZoomOut, RotateCw, Maximize2, Save, Sparkles, Video
+  ZoomIn, ZoomOut, RotateCw, Maximize2, Save, Sparkles, Video,
+  GripVertical, Maximize, Minimize
 } from 'lucide-react';
 import axios from 'axios';
 import { extractVideoId, getThumbnailUrl } from '../utils/youtube';
@@ -21,11 +22,15 @@ function VideoEditor() {
   // Processing states
   const [isProcessing, setIsProcessing] = useState(true);
   const [processingStatus, setProcessingStatus] = useState('Analyzing video...');
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState('');
 
   // Video playback states
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
   const [selectedClipIndex, setSelectedClipIndex] = useState(0);
   
   // Publish modal states
@@ -40,13 +45,19 @@ function VideoEditor() {
   
   // Chat states
   const [chatMessage, setChatMessage] = useState('');
+  const [isAiThinking, setIsAiThinking] = useState(false);
   const [chatHistory, setChatHistory] = useState([
     { 
       role: 'assistant', 
-      content: 'Hello! I\'m your AI video editor assistant. I\'ll help you create amazing shorts from your video.',
+      content: 'Hello! I\'m your AI video editor assistant. I can help you trim clips, adjust duration, add effects, and more. Just tell me what you want to do!',
       timestamp: new Date().toISOString()
     }
   ]);
+
+  // Resizable chat panel states
+  const [chatPanelWidth, setChatPanelWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
 
   // Clips data
   const [clips, setClips] = useState([]);
@@ -111,14 +122,23 @@ function VideoEditor() {
         attempts++;
         
         const response = await axios.get(`/api/v1/job/${jobId}`);
-        const { status, shorts: generatedShorts, progress } = response.data;
+        const { status, shorts: generatedShorts, progress, percent } = response.data;
 
         if (progress) {
           setProcessingStatus(progress);
         }
 
+        // Update progress percentage (0-100)
+        if (typeof percent === 'number') {
+          setProcessingProgress(Math.min(Math.max(percent, 0), 100));
+        } else {
+          // Estimate based on attempts if backend doesn't provide
+          setProcessingProgress(Math.min((attempts / maxAttempts) * 100, 95));
+        }
+
         if (status === 'completed' && generatedShorts && generatedShorts.length > 0) {
           clearInterval(poll);
+          setProcessingProgress(100);
           
           // Convert shorts to clips format
           const newClips = generatedShorts.map((short, idx) => ({
@@ -135,7 +155,8 @@ function VideoEditor() {
           setIsProcessing(false);
           setChatHistory(prev => [...prev, { 
             role: 'assistant', 
-            content: `✅ Generated ${generatedShorts.length} video highlights! Click any clip to preview.` 
+            content: `✅ Generated ${generatedShorts.length} video highlights! Click any clip to preview.`,
+            timestamp: new Date().toISOString()
           }]);
         } else if (status === 'failed') {
           clearInterval(poll);
@@ -186,6 +207,46 @@ function VideoEditor() {
     }
   }, [clipTitle, clipDuration]);
 
+  // Chat panel resize handlers
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      
+      const newWidth = e.clientX;
+      if (newWidth >= 280 && newWidth <= 600) {
+        setChatPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  const handleResizeStart = () => {
+    setIsResizing(true);
+  };
+
+  const toggleChatExpand = () => {
+    if (isChatExpanded) {
+      setChatPanelWidth(320); // Reset to default
+      setIsChatExpanded(false);
+    } else {
+      setChatPanelWidth(600); // Expand to max width
+      setIsChatExpanded(true);
+    }
+  };
+
   const handlePlayPause = () => {
     if (videoRef.current) {
       if (isPlaying) {
@@ -206,48 +267,205 @@ function VideoEditor() {
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      videoRef.current.volume = volume;
     }
   };
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!chatMessage.trim()) return;
-
-    const userMsg = {
-      role: 'user',
-      content: chatMessage,
-      timestamp: new Date().toISOString()
-    };
-
-    setChatHistory([...chatHistory, userMsg]);
-    setChatMessage('');
-
-    setTimeout(() => {
-      const assistantMsg = {
-        role: 'assistant',
-        content: 'I can help you with that! What would you like to do with this clip?',
-        timestamp: new Date().toISOString()
-      };
-      setChatHistory(prev => [...prev, assistantMsg]);
-    }, 1000);
+  const handleProgressClick = (e) => {
+    if (videoRef.current) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      videoRef.current.currentTime = pos * videoRef.current.duration;
+    }
   };
 
-  const handleQuickAction = (action) => {
-    const userMsg = {
+  const handleVolumeChange = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setVolume(pos);
+    if (videoRef.current) {
+      videoRef.current.volume = pos;
+    }
+    if (pos > 0) setIsMuted(false);
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      if (isMuted) {
+        videoRef.current.volume = volume;
+        setIsMuted(false);
+      } else {
+        videoRef.current.volume = 0;
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const formatTimeDisplay = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!chatMessage.trim() || isAiThinking) return;
+
+    const userMessage = chatMessage.trim();
+    setChatMessage('');
+
+    // Add user message to chat
+    setChatHistory(prev => [...prev, {
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    }]);
+
+    // Show AI thinking state
+    setIsAiThinking(true);
+    setChatHistory(prev => [...prev, {
+      role: 'assistant',
+      content: '🤔 Analyzing your request...',
+      timestamp: new Date().toISOString(),
+      isThinking: true
+    }]);
+
+    try {
+      // Send message to Gemini AI agent
+      const response = await axios.post('/api/v1/ai-agent/execute', {
+        message: userMessage,
+        context: {
+          clips,
+          selectedClipIndex,
+          selectedClip,
+          videoInfo: {
+            youtubeUrl,
+            videoId
+          }
+        }
+      });
+
+      const { action, parameters, message: aiMessage, updatedClips } = response.data;
+
+      // Remove thinking message
+      setChatHistory(prev => prev.filter(msg => !msg.isThinking));
+
+      // Execute the action based on AI response
+      if (action && parameters) {
+        await executeAiAction(action, parameters, updatedClips);
+      }
+
+      // Add AI response to chat
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: aiMessage || 'Done! Let me know if you need anything else.',
+        timestamp: new Date().toISOString()
+      }]);
+
+    } catch (error) {
+      // Remove thinking message
+      setChatHistory(prev => prev.filter(msg => !msg.isThinking));
+
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Sorry, I encountered an error: ${error.response?.data?.detail || error.message}. Please try again.`,
+        timestamp: new Date().toISOString()
+      }]);
+      console.error('AI Agent error:', error);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  // Execute AI-determined actions
+  const executeAiAction = async (action, parameters, updatedClips) => {
+    switch (action) {
+      case 'trim_clip':
+        if (parameters.clipIndex !== undefined && parameters.startTime !== undefined && parameters.endTime !== undefined) {
+          const newClips = [...clips];
+          newClips[parameters.clipIndex] = {
+            ...newClips[parameters.clipIndex],
+            startTime: formatTime(parameters.startTime),
+            endTime: formatTime(parameters.endTime),
+            duration: parameters.endTime - parameters.startTime
+          };
+          setClips(newClips);
+        }
+        break;
+
+      case 'update_duration':
+        if (parameters.clipIndex !== undefined && parameters.duration !== undefined) {
+          const newClips = [...clips];
+          newClips[parameters.clipIndex] = {
+            ...newClips[parameters.clipIndex],
+            duration: parameters.duration
+          };
+          setClips(newClips);
+          setClipDuration(parameters.duration);
+        }
+        break;
+
+      case 'update_title':
+        if (parameters.clipIndex !== undefined && parameters.title) {
+          const newClips = [...clips];
+          newClips[parameters.clipIndex] = {
+            ...newClips[parameters.clipIndex],
+            title: parameters.title
+          };
+          setClips(newClips);
+          setClipTitle(parameters.title);
+        }
+        break;
+
+      case 'select_clip':
+        if (parameters.clipIndex !== undefined && parameters.clipIndex < clips.length) {
+          setSelectedClipIndex(parameters.clipIndex);
+        }
+        break;
+
+      case 'delete_clip':
+        if (parameters.clipIndex !== undefined) {
+          const newClips = clips.filter((_, idx) => idx !== parameters.clipIndex);
+          setClips(newClips);
+          setSelectedClipIndex(Math.max(0, parameters.clipIndex - 1));
+        }
+        break;
+
+      case 'duplicate_clip':
+        if (parameters.clipIndex !== undefined) {
+          const clipToDuplicate = clips[parameters.clipIndex];
+          const newClip = {
+            ...clipToDuplicate,
+            id: clips.length + 1,
+            title: `${clipToDuplicate.title} (Copy)`
+          };
+          setClips([...clips, newClip]);
+        }
+        break;
+
+      case 'update_clips':
+        if (updatedClips && Array.isArray(updatedClips)) {
+          setClips(updatedClips);
+        }
+        break;
+
+      default:
+        console.log('Unknown action:', action);
+    }
+  };
+
+  const handleQuickAction = async (action) => {
+    setChatHistory(prev => [...prev, {
       role: 'user',
       content: action,
       timestamp: new Date().toISOString()
-    };
-    setChatHistory([...chatHistory, userMsg]);
+    }]);
     
-    setTimeout(() => {
-      const assistantMsg = {
-        role: 'assistant',
-        content: `Processing: ${action}`,
-        timestamp: new Date().toISOString()
-      };
-      setChatHistory(prev => [...prev, assistantMsg]);
-    }, 1000);
+    // Trigger AI processing for quick actions
+    const fakeEvent = { preventDefault: () => {}, target: { value: action } };
+    setChatMessage(action);
+    await handleSendMessage(fakeEvent);
   };
 
   const moveClip = (direction) => {
@@ -423,16 +641,33 @@ function VideoEditor() {
       </div>
 
       <div className="editor-workspace-new">
-        {/* Left Panel - Assistant Chat */}
-        <aside className="assistant-panel">
+        {/* Left Panel - Assistant Chat - Resizable */}
+        <aside className="assistant-panel" style={{ width: `${chatPanelWidth}px`, minWidth: '280px', maxWidth: '600px' }}>
+          {/* Resize Handle */}
+          <button 
+            className="resize-handle" 
+            onMouseDown={handleResizeStart}
+            aria-label="Resize chat panel"
+            type="button"
+          >
+            <GripVertical size={16} />
+          </button>
+
           <div className="copilot-chat-header">
             <div className="chat-header-content">
               <Sparkles size={18} className="sparkle-icon-chat" />
               <div className="chat-header-text">
                 <h3>Copilot</h3>
-                <span className="chat-status">Ready to assist</span>
+                <span className="chat-status">{isAiThinking ? 'Thinking...' : 'Ready to assist'}</span>
               </div>
             </div>
+            <button 
+              className="expand-chat-btn" 
+              onClick={toggleChatExpand}
+              aria-label={isChatExpanded ? 'Minimize chat' : 'Maximize chat'}
+            >
+              {isChatExpanded ? <Minimize size={16} /> : <Maximize size={16} />}
+            </button>
           </div>
 
           <div className="suggestions-section">
@@ -492,22 +727,22 @@ function VideoEditor() {
             <div className="input-wrapper-copilot">
               <input
                 type="text"
-                placeholder="Ask Copilot..."
+                placeholder={isAiThinking ? "AI is processing..." : "Ask Copilot to edit your video..."}
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}
                 className="copilot-input"
-                disabled={isProcessing}
+                disabled={isAiThinking}
               />
               <button 
                 type="submit" 
                 className="copilot-send-btn" 
-                disabled={isProcessing || !chatMessage.trim()}
+                disabled={isAiThinking || !chatMessage.trim()}
                 aria-label="Send message"
               >
-                <Send size={18} />
+                {isAiThinking ? <Loader2 size={18} className="spinner-icon" /> : <Send size={18} />}
               </button>
             </div>
-            <p className="input-hint">Copilot uses AI. Check for mistakes.</p>
+            <p className="input-hint">💡 Try: "Trim clip to 20s" or "Change title to Marketing Tips"</p>
           </form>
         </aside>
 
@@ -525,37 +760,95 @@ function VideoEditor() {
                   />
                 )}
                 <div className="loading-overlay">
-                  <Loader2 size={64} className="spinner-icon" />
-                  <p className="loading-text">{processingStatus}</p>
-                  <div className="loading-bar">
-                    <div className="loading-bar-fill"></div>
+                  <div className="loader-wrapper">
+                    <div className="loader"></div>
+                    <span className="loader-percentage">{Math.round(processingProgress)}%</span>
                   </div>
+                  <p className="loading-text">{processingStatus}</p>
                 </div>
               </div>
-            ) : clips.length > 0 && selectedClip?.url ? (
-              // Show video player when ready
-              <>
-                <video
-                  ref={videoRef}
-                  className="video-player-new"
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  src={selectedClip.url}
-                  key={selectedClip.url}
-                >
-                  <track kind="captions" srcLang="en" label="English" />
-                </video>
-                <div className="video-overlay">
-                  <button className="play-overlay-btn" onClick={handlePlayPause} aria-label="Play/Pause video">
-                    {isPlaying ? <Pause size={48} /> : <Play size={48} />}
-                  </button>
-                </div>
-                <div className="clip-label">Clip #{selectedClipIndex + 1}</div>
-              </>
             ) : (
-              <div className="preview-error">
-                <p>{error || 'No video available'}</p>
-              </div>
+              <>
+                {clips.length > 0 && selectedClip?.url ? (
+                  // Show video player when ready with 9:16 aspect ratio
+                  <div className="video-wrapper">
+                    <video
+                      ref={videoRef}
+                      className="video-player-new"
+                      onTimeUpdate={handleTimeUpdate}
+                      onLoadedMetadata={handleLoadedMetadata}
+                      onEnded={() => setIsPlaying(false)}
+                      src={selectedClip.url}
+                      key={selectedClip.url}
+                    >
+                      <track kind="captions" srcLang="en" label="English" />
+                    </video>
+                    
+                    <div className="clip-label">Clip #{selectedClipIndex + 1}</div>
+                    
+                    {/* Video Controls */}
+                    <div className="video-controls">
+                      <div 
+                        className="video-progress" 
+                        onClick={handleProgressClick}
+                        role="progressbar"
+                        aria-label="Video progress"
+                        aria-valuenow={currentTime}
+                        aria-valuemin={0}
+                        aria-valuemax={duration}
+                      >
+                        <div 
+                          className="video-progress-filled" 
+                          style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                        />
+                      </div>
+                      
+                      <div className="video-control-buttons">
+                        <button 
+                          className="control-btn primary" 
+                          onClick={handlePlayPause}
+                          aria-label={isPlaying ? "Pause" : "Play"}
+                        >
+                          {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                        </button>
+                        
+                        <button 
+                          className="control-btn" 
+                          onClick={toggleMute}
+                          aria-label={isMuted ? "Unmute" : "Mute"}
+                        >
+                          {isMuted ? <Volume2 size={18} style={{ opacity: 0.5 }} /> : <Volume2 size={18} />}
+                        </button>
+                        
+                        <div className="volume-control">
+                          <div 
+                            className="volume-slider" 
+                            onClick={handleVolumeChange}
+                            role="slider"
+                            aria-label="Volume"
+                            aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          >
+                            <div 
+                              className="volume-slider-filled" 
+                              style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <span className="video-time">
+                          {formatTimeDisplay(currentTime)} / {formatTimeDisplay(duration)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="preview-error">
+                    <p>{error || 'No video available'}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -610,27 +903,31 @@ function VideoEditor() {
                 <div className="timeline-loading">
                   <p>Generating clips...</p>
                 </div>
-              ) : clips.length > 0 ? (
-                clips.map((clip, idx) => (
-                  <button
-                    key={clip.id}
-                    className={`clip-item ${idx === selectedClipIndex ? 'selected' : ''}`}
-                    onClick={() => setSelectedClipIndex(idx)}
-                    type="button"
-                    aria-label={`Select clip ${idx + 1}: ${clip.title}`}
-                  >
-                    <div className="clip-number">#{idx + 1}</div>
-                    <div className="clip-name">{clip.title}</div>
-                    <div className="clip-duration">{clip.duration}s</div>
-                    <div className="clip-time-range">
-                      {clip.startTime} - {clip.endTime}
-                    </div>
-                  </button>
-                ))
               ) : (
-                <div className="timeline-empty">
-                  <p>No clips yet</p>
-                </div>
+                <>
+                  {clips.length > 0 ? (
+                    clips.map((clip, idx) => (
+                      <button
+                        key={clip.id}
+                        className={`clip-item ${idx === selectedClipIndex ? 'selected' : ''}`}
+                        onClick={() => setSelectedClipIndex(idx)}
+                        type="button"
+                        aria-label={`Select clip ${idx + 1}: ${clip.title}`}
+                      >
+                        <div className="clip-number">#{idx + 1}</div>
+                        <div className="clip-name">{clip.title}</div>
+                        <div className="clip-duration">{clip.duration}s</div>
+                        <div className="clip-time-range">
+                          {clip.startTime} - {clip.endTime}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="timeline-empty">
+                      <p>No clips yet</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -828,11 +1125,11 @@ function VideoEditor() {
 
       {/* Publish Modal */}
       {showPublishModal && (
-        <div className="modal-overlay" onClick={() => setShowPublishModal(false)}>
-          <div className="publish-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => setShowPublishModal(false)} role="presentation">
+          <div className="publish-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className="modal-header">
               <h2>Publish Your Short</h2>
-              <button className="modal-close" onClick={() => setShowPublishModal(false)}>
+              <button className="modal-close" onClick={() => setShowPublishModal(false)} aria-label="Close modal">
                 ×
               </button>
             </div>
