@@ -1078,65 +1078,49 @@ function VideoEditor() {
     if (clips.length === 0) return;
 
     try {
-      const clip = clips[selectedClipIndex];
+      // Get all clips to export
+      const clipsToExport = clips.map(clip => ({
+        id: clip.id,
+        title: clip.title,
+        filename: clip.filename,
+        download_url: clip.download_url || clip.url || `/api/v1/download/${clip.filename}`,
+        duration: clip.duration,
+        thumbnail: thumbnailUrl, // Use video thumbnail
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        has_captions: clip.has_captions
+      }));
+
+      // Navigate to dashboard with exported clips
+      navigate('/dashboard', { 
+        state: { 
+          exportedClips: clipsToExport,
+          youtubeUrl: youtubeUrl,
+          videoId: videoId,
+          fromExport: true
+        } 
+      });
 
       // Show notification
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "📥 Downloading video...",
+          content: `📤 Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} to Dashboard!`,
           timestamp: new Date().toISOString(),
         },
       ]);
 
-      // Get the video URL - use download_url if available, otherwise construct it
-      const videoUrl = clip.download_url || `/api/v1/download/${clip.filename}`;
-
-      // Fetch the video file
-      const response = await axios.get(videoUrl, {
-        responseType: "blob",
-        onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total,
-            );
-            setProcessingStatus(`Downloading... ${percentCompleted}%`);
-          }
-        },
-      });
-
-      // Create blob URL and trigger download
-      const blob = new Blob([response.data], { type: "video/mp4" });
-      const url = globalThis.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download =
-        clip.filename || `short_${clip.title || selectedClipIndex + 1}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      globalThis.URL.revokeObjectURL(url);
-
-      // Success notification
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `✅ Video "${clip.title}" downloaded successfully!`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "❌ Failed to download video. Please try again.",
+          content: "❌ Failed to export clips. Please try again.",
           timestamp: new Date().toISOString(),
         },
       ]);
-      console.error("Download error:", error);
+      console.error("Export error:", error);
     }
   };
 
