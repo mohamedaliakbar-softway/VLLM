@@ -216,43 +216,63 @@ class YouTubeProcessor:
                         break
                 
                 if tracks:
-                    # Let yt-dlp download subtitles directly (bypasses rate limiting)
-                    logger.info(f"Downloading subtitles via yt-dlp for video {video_id}")
-                    
+
+                    # Use yt-dlp to download subtitles directly (bypasses rate limiting)
+                    # yt-dlp has better evasion techniques than direct HTTP requests
                     import tempfile
                     import os
-                    import glob
                     
-                    with tempfile.TemporaryDirectory() as tmpdir:
-                        # Download subtitles using yt-dlp
-                        sub_opts = self._get_ydl_opts({
-                            'writesubtitles': True,
-                            'writeautomaticsub': True,
-                            'subtitleslangs': ['en'],
-                            'skip_download': True,
-                            'subtitlesformat': 'vtt',  # Force VTT format
-                            'outtmpl': os.path.join(tmpdir, 'subtitle'),
+                    subtitle_temp_dir = tempfile.mkdtemp(prefix="yt_subs_")
+                    try:
+                        logger.info(f"Downloading subtitles using yt-dlp for video {video_id}...")
+                        
+                        # Configure yt-dlp to download subtitles only
+                        sub_opts = {
+                            'skip_download': True,  # Don't download video
+                            'writesubtitles': True,  # Download subtitles
+                            'writeautomaticsub': True,  # Include auto-generated
+                            'subtitleslangs': ['en'],  # English only
+                            'subtitlesformat': 'vtt',  # Prefer VTT format
+                            'outtmpl': os.path.join(subtitle_temp_dir, '%(id)s.%(ext)s'),
                             'quiet': True,
                             'no_warnings': True,
-                        })
+                            'extract_flat': False
+                        }
                         
+                        # Use same cookies/headers if configured
+                        if self.cookies_file and os.path.exists(self.cookies_file):
+                            sub_opts['cookiefile'] = self.cookies_file
+                        if self.use_browser_cookies:
+                            sub_opts['cookiesfrombrowser'] = (self.browser_name, None, None, None)
+                        
+                        # Download subtitles using yt-dlp
+                        with yt_dlp.YoutubeDL(sub_opts) as ydl_sub:
+                            ydl_sub.download([youtube_url])
+                        
+                        # Find and read the downloaded subtitle file
+                        subtitle_files = [f for f in os.listdir(subtitle_temp_dir) 
+                                        if f.endswith(('.vtt', '.en.vtt'))]
+                        
+                        if subtitle_files:
+                            subtitle_path = os.path.join(subtitle_temp_dir, subtitle_files[0])
+                            with open(subtitle_path, 'r', encoding='utf-8') as f:
+                                subtitle_content = f.read()
+                            transcript_text = self._parse_subtitles(subtitle_content)
+                            logger.info(f"✅ Successfully downloaded subtitles via yt-dlp")
+                        else:
+                            logger.warning(f"No subtitle files found after yt-dlp download")
+                    
+                    except Exception as e:
+                        logger.warning(f"yt-dlp subtitle download failed: {e}, trying Vosk fallback...")
+                    
+                    finally:
+                        # Cleanup temp directory
                         try:
-                            with yt_dlp.YoutubeDL(sub_opts) as ydl_sub:
-                                ydl_sub.download([youtube_url])
-                            
-                            # Find the downloaded subtitle file
-                            vtt_files = glob.glob(os.path.join(tmpdir, '*.vtt'))
-                            if vtt_files:
-                                with open(vtt_files[0], 'r', encoding='utf-8') as f:
-                                    subtitle_content = f.read()
-                                transcript_text = self._parse_subtitles(subtitle_content)
-                                logger.info(f"Successfully extracted {len(transcript_text)} chars via yt-dlp")
-                            else:
-                                logger.warning(f"yt-dlp downloaded subtitles but no VTT file found in {tmpdir}")
-                                transcript_text = ""
-                        except Exception as e:
-                            logger.error(f"yt-dlp subtitle download failed: {str(e)}")
-                            transcript_text = ""
+                            import shutil
+                            shutil.rmtree(subtitle_temp_dir, ignore_errors=True)
+                        except:
+                            pass
+
                 else:
                     logger.warning(f"No English subtitles found for video {video_id}")
                 
@@ -321,9 +341,9 @@ class YouTubeProcessor:
             
             downloaded_segments = []
             
-            # Get video stream URL without downloading
+            # Get video stream URL without downloading - request highest quality
             ydl_opts = self._get_ydl_opts({
-                'format': 'best[ext=mp4]/best',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'quiet': True,
                 'no_warnings': True,
             })

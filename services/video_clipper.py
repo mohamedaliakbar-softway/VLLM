@@ -7,6 +7,7 @@ import subprocess
 import concurrent.futures
 from config import settings, PLATFORM_DIMENSIONS
 from services.smart_cropper import SmartCropper
+from services.logo_overlay import LogoOverlay
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class VideoClipper:
         self.output_dir = Path(settings.output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.smart_cropper = SmartCropper()
+        self.logo_overlay = LogoOverlay()
     
     def create_shorts_fast(
         self, 
@@ -116,22 +118,22 @@ class VideoClipper:
                     output_filename = f"{video_id}_h_{idx}.mp4"
                 output_path = self.output_dir / output_filename
                 
-                # Export clip with optimized settings for fast encoding and social media quality
+                # Export clip with high quality settings - balanced for quality and performance
                 clip.write_videofile(
                     str(output_path),
                     codec='libx264',
                     audio_codec='aac',
-                    preset='veryfast',  # 3-5x faster than 'slow', still good quality
-                    bitrate='4000k',  # Optimal for social media (was 8000k - overkill)
+                    preset='medium',  # Balanced: good quality and reasonable speed
+                    bitrate='6000k',  # High quality for social media (1080p shorts)
                     fps=clip.fps if clip.fps else 30,
-                    audio_bitrate='128k',  # Sufficient for social media (was 192k)
-                    threads=8,  # Use more threads for faster encoding (was 4)
+                    audio_bitrate='192k',  # High quality audio
+                    threads=8,  # Use multiple threads for faster encoding
                     ffmpeg_params=[
-                        '-crf', '23',  # Good quality, much faster (was 18 - near lossless, slow)
+                        '-crf', '20',  # High quality (18=near lossless, 23=good, 20=excellent)
                         '-pix_fmt', 'yuv420p',  # Compatible format
                         '-movflags', '+faststart',  # Enable streaming
-                        '-profile:v', 'main',  # Main profile (was high - unnecessary for shorts)
-                        '-level', '4.0',  # H.264 level
+                        '-profile:v', 'high',  # High profile for better quality
+                        '-level', '4.2',  # H.264 level 4.2 (supports 1080p60)
                     ],
                     logger=None  # Suppress moviepy logs
                 )
@@ -744,4 +746,54 @@ class VideoClipper:
                 logger.info(f"Cleaned up output file: {file_path}")
         except Exception as e:
             logger.warning(f"Error cleaning up file {file_path}: {str(e)}")
+    
+    def add_logo(
+        self,
+        input_path: str,
+        logo_path: str,
+        output_path: str,
+        position: str = "bottom-right",
+        size_percent: float = 10.0,
+        opacity: float = 0.8,
+        padding: int = 20
+    ) -> str:
+        """
+        Add brand logo overlay to a video.
+        
+        Args:
+            input_path: Path to input video
+            logo_path: Path to logo image (PNG recommended for transparency)
+            output_path: Path for output video with logo
+            position: Logo position ("top-left", "top-right", "bottom-left", "bottom-right",
+                     "center", "top-center", "bottom-center")
+            size_percent: Logo size as percentage of video width (1-50, default 10)
+            opacity: Logo opacity 0.0-1.0 (default 0.8)
+            padding: Padding from edges in pixels (default 20)
+            
+        Returns:
+            Path to output video with logo overlay
+            
+        Raises:
+            Exception: If logo overlay fails
+        """
+        try:
+            logger.info(f"Adding logo overlay to video: {input_path}")
+            
+            result = self.logo_overlay.add_logo(
+                video_path=input_path,
+                logo_path=logo_path,
+                output_path=output_path,
+                position=position,
+                size_percent=size_percent,
+                opacity=opacity,
+                padding=padding
+            )
+            
+            logger.info(f"Logo overlay completed: {output_path}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error adding logo overlay: {str(e)}")
+            raise
+
 

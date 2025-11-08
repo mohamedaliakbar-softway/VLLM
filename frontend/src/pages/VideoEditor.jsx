@@ -19,6 +19,7 @@ import {
   GripVertical,
   Maximize,
   Minimize,
+  ImageIcon,
 } from "lucide-react";
 import axios from "axios";
 import { extractVideoId, getThumbnailUrl } from "../utils/youtube";
@@ -117,6 +118,16 @@ function VideoEditor() {
     useState("bold_modern");
   const [showCaptionPreview, setShowCaptionPreview] = useState(false);
   const [currentCaption, setCurrentCaption] = useState('');
+  
+  // Brand logo states
+  const [brandLogos, setBrandLogos] = useState([]);
+  const [selectedLogo, setSelectedLogo] = useState(null);
+  const [logoSettings, setLogoSettings] = useState({
+    position: "bottom-right",
+    size_percent: 10.0,
+    opacity: 0.8,
+    padding: 20,
+  });
   
   // Caption generation timer states
   const [isCaptionGenerating, setIsCaptionGenerating] = useState(false);
@@ -681,6 +692,133 @@ function VideoEditor() {
     }
   };
 
+  // Handle logo upload
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/bmp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (PNG, JPG, GIF, or BMP)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Logo file size must be less than 5MB');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post('/api/v1/upload-logo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.data.success) {
+        // Add to brandLogos list
+        setBrandLogos((prev) => [
+          ...prev,
+          {
+            path: response.data.logo_path,
+            filename: file.name,
+            info: response.data.logo_info,
+          },
+        ]);
+
+        // Select the newly uploaded logo
+        setSelectedLogo(response.data.logo_path);
+
+        // Add success message to chat
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `✅ Logo uploaded successfully! You can now apply it to your videos. Logo: ${file.name}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Logo upload failed:', error);
+      alert('Failed to upload logo. Please try again.');
+    }
+
+    // Reset input
+    event.target.value = '';
+  };
+
+  // Apply logo to current clip
+  const handleApplyLogo = async (createNewClip = false) => {
+    if (!selectedLogo) {
+      alert('Please upload a logo first');
+      return;
+    }
+
+    const currentClip = clips[selectedClipIndex];
+    if (!currentClip) {
+      alert('Please select a clip first');
+      return;
+    }
+
+    // Ask user if they want to replace or create new
+    const shouldCreateNew = createNewClip || window.confirm(
+      '🎨 Logo Application Options:\n\n' +
+      '• Click "OK" to CREATE A NEW CLIP with logo (keeps original)\n' +
+      '• Click "Cancel" to REPLACE ORIGINAL clip with logo\n\n' +
+      'Recommended: Create new clip to keep original'
+    );
+
+    try {
+      const response = await axios.post(
+        `/api/v1/clips/${currentClip.id}/apply-logo`,
+        {
+          position: logoSettings.position,
+          size_percent: logoSettings.size_percent,
+          opacity: logoSettings.opacity,
+          padding: logoSettings.padding,
+          create_new_clip: shouldCreateNew,
+        },
+        {
+          params: {
+            logo_path: selectedLogo,
+          },
+        }
+      );
+
+      // Show success message
+      const action = shouldCreateNew ? 'New clip being created' : 'Original clip being updated';
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `✅ Logo applied successfully to ${currentClip.title}! ${action}...`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
+      // Optionally poll for job completion
+      if (response.data.job_id) {
+        pollJobStatus(response.data.job_id);
+      }
+    } catch (error) {
+      console.error('Failed to apply logo:', error);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `❌ Failed to apply logo: ${error.response?.data?.detail || error.message}`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+  };
+
   // Execute AI-determined actions
   const executeAiAction = async (action, parameters, updatedClips) => {
     switch (action) {
@@ -940,65 +1078,49 @@ function VideoEditor() {
     if (clips.length === 0) return;
 
     try {
-      const clip = clips[selectedClipIndex];
+      // Get all clips to export
+      const clipsToExport = clips.map(clip => ({
+        id: clip.id,
+        title: clip.title,
+        filename: clip.filename,
+        download_url: clip.download_url || clip.url || `/api/v1/download/${clip.filename}`,
+        duration: clip.duration,
+        thumbnail: thumbnailUrl, // Use video thumbnail
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        has_captions: clip.has_captions
+      }));
+
+      // Navigate to dashboard with exported clips
+      navigate('/dashboard', { 
+        state: { 
+          exportedClips: clipsToExport,
+          youtubeUrl: youtubeUrl,
+          videoId: videoId,
+          fromExport: true
+        } 
+      });
 
       // Show notification
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "📥 Downloading video...",
+          content: `📤 Exported ${clips.length} clip${clips.length > 1 ? 's' : ''} to Dashboard!`,
           timestamp: new Date().toISOString(),
         },
       ]);
 
-      // Get the video URL - use download_url if available, otherwise construct it
-      const videoUrl = clip.download_url || `/api/v1/download/${clip.filename}`;
-
-      // Fetch the video file
-      const response = await axios.get(videoUrl, {
-        responseType: "blob",
-        onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total,
-            );
-            setProcessingStatus(`Downloading... ${percentCompleted}%`);
-          }
-        },
-      });
-
-      // Create blob URL and trigger download
-      const blob = new Blob([response.data], { type: "video/mp4" });
-      const url = globalThis.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download =
-        clip.filename || `short_${clip.title || selectedClipIndex + 1}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      globalThis.URL.revokeObjectURL(url);
-
-      // Success notification
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `✅ Video "${clip.title}" downloaded successfully!`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "❌ Failed to download video. Please try again.",
+          content: "❌ Failed to export clips. Please try again.",
           timestamp: new Date().toISOString(),
         },
       ]);
-      console.error("Download error:", error);
+      console.error("Export error:", error);
     }
   };
 
@@ -1647,6 +1769,22 @@ function VideoEditor() {
               onSubmit={handleSendMessage}
             >
               <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 focus-within:ring-2 focus-within:ring-[#1E201E] focus-within:border-[#1E201E]">
+                {/* Logo Upload Button */}
+                <label
+                  htmlFor="logo-upload"
+                  className="cursor-pointer text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Upload brand logo"
+                >
+                  <ImageIcon className="h-5 w-5" />
+                  <input
+                    id="logo-upload"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/gif,image/bmp"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                </label>
+                
                 <Input
                   type="text"
                   placeholder={
@@ -1674,7 +1812,7 @@ function VideoEditor() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                💡 Try: "Trim clip to 20s" or "Change title to Marketing Tips"
+                💡 Try: "Trim clip to 20s" or "Change title to Marketing Tips" | 🖼️ Click the image icon to upload a brand logo
               </p>
             </form>
           </aside>

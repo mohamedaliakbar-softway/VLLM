@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Video, Play, Trash2, Download, Calendar, TrendingUp, ArrowLeft, 
-  BarChart3, Eye, Plus, Sparkles, Film
+  BarChart3, Plus, Sparkles, Film, Share2, X, User, Settings, LogOut
 } from 'lucide-react';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
@@ -10,10 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 function Dashboard() {
   const [videos, setVideos] = useState([]);
+  const [exportedClips, setExportedClips] = useState([]); // Clips from export
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [expandedVideo, setExpandedVideo] = useState(null);
+  const [user, setUser] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [stats, setStats] = useState({
     totalVideos: 0,
     totalShorts: 0,
@@ -21,8 +24,22 @@ function Dashboard() {
     avgEngagement: 0
   });
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    // Check if user is logged in
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+
+    // Check if coming from export
+    if (location.state?.fromExport && location.state?.exportedClips) {
+      setExportedClips(location.state.exportedClips);
+      // Clear the location state to prevent re-triggering on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    
     fetchProjects();
   }, []);
 
@@ -39,14 +56,11 @@ function Dashboard() {
         thumbnail: `https://img.youtube.com/vi/${project.video_id}/maxresdefault.jpg`,
         createdAt: new Date(project.created_at).toLocaleDateString(),
         shorts: project.shorts?.length || 0,
-        views: 0, // Real view data would come from social platforms
-        engagement: 0,
         highlights: project.shorts?.map((short, idx) => ({
           id: short.id,
           title: short.title || `Highlight ${idx + 1}`,
           duration: `${short.duration || 30}s`,
-          views: 0,
-          platform: short.platform || 'Unknown',
+          platform: short.platform || 'YouTube Shorts',
           filename: short.filename,
           download_url: short.download_url || `/api/v1/download/${short.filename}`
         })) || [],
@@ -60,7 +74,7 @@ function Dashboard() {
       const totalShorts = transformedVideos.reduce((sum, v) => sum + v.shorts, 0);
       setStats({
         totalVideos: transformedVideos.length,
-        totalShorts: totalShorts,
+        totalShorts: totalShorts + exportedClips.length,
         totalViews: 0,
         avgEngagement: 0
       });
@@ -121,10 +135,37 @@ function Dashboard() {
     }
   };
 
+  const handleShareClip = (clip) => {
+    // Navigate to editor with clip data for sharing
+    navigate('/editor', { 
+      state: { 
+        shareClip: clip,
+        youtubeUrl: clip.youtubeUrl
+      } 
+    });
+  };
+
+  const handleRemoveExportedClip = (clipId) => {
+    setExportedClips(exportedClips.filter(clip => clip.id !== clipId));
+    
+    // Update stats
+    setStats(prev => ({
+      ...prev,
+      totalShorts: prev.totalShorts - 1
+    }));
+  };
+
   const handleTimelineFilter = (filter) => {
     setTimelineFilter(filter);
     // Here you would filter videos based on the timeline
     // For now, we'll just update the state
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    setUser(null);
+    setShowProfileMenu(false);
+    navigate('/');
   };
 
   return (
@@ -134,20 +175,79 @@ function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" onClick={() => navigate('/')}>
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
+              <div className="w-8 h-8 bg-[#1E201E] rounded-lg flex items-center justify-center">
+                <Video className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-lg font-semibold text-gray-900">HighlightAI</span>
             </div>
+            
             <div className="flex items-center gap-3">
               <Sparkles className="h-6 w-6 text-[#1E201E]" />
               <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
             </div>
-            <div>
+            
+            <div className="flex items-center gap-3">
               <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white" onClick={() => navigate('/')}>
                 <Plus className="h-4 w-4" />
                 Create New
               </Button>
+
+              {user && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1E201E] to-gray-700 flex items-center justify-center text-white text-sm font-bold">
+                      {user.avatar ? (
+                        <img src={user.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        user.name?.charAt(0).toUpperCase() || 'U'
+                      )}
+                    </div>
+                  </button>
+
+                  {showProfileMenu && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                          <p className="text-xs text-gray-600 truncate">{user.email}</p>
+                        </div>
+                        <Link
+                          to="/profile"
+                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setShowProfileMenu(false)}
+                        >
+                          <User className="h-4 w-4" />
+                          Profile
+                        </Link>
+                        <Link
+                          to="/settings"
+                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setShowProfileMenu(false)}
+                        >
+                          <Settings className="h-4 w-4" />
+                          Settings
+                        </Link>
+                        <div className="border-t border-gray-100 mt-2 pt-2">
+                          <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Logout
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -203,12 +303,12 @@ function Dashboard() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Eye className="h-6 w-6 text-white" />
+                <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                  <Download className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Total Views</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalViews.toLocaleString()}</p>
+                  <p className="text-sm text-gray-600 mb-1">Exported Clips</p>
+                  <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -216,17 +316,103 @@ function Dashboard() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
                   <TrendingUp className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Avg Engagement</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.avgEngagement}%</p>
+                  <p className="text-sm text-gray-600 mb-1">Ready to Share</p>
+                  <p className="text-2xl font-bold text-gray-900">{exportedClips.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Exported Clips Section */}
+        {exportedClips.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <Sparkles className="h-6 w-6 text-purple-600" />
+                  Exported Clips
+                </h3>
+                <p className="text-gray-600 mt-1">Your recently exported video shorts ready to download or share</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              {exportedClips.map((clip) => (
+                <Card key={clip.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white">
+                  {/* Clip Thumbnail */}
+                  <div className="relative aspect-video bg-gradient-to-br from-purple-100 to-pink-100 overflow-hidden">
+                    <img 
+                      src={clip.thumbnail} 
+                      alt={clip.title} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-4">
+                      <div className="text-white">
+                        <p className="text-xs font-medium mb-1">Duration: {clip.duration}s</p>
+                        <p className="text-xs opacity-80">{clip.startTime} - {clip.endTime}</p>
+                      </div>
+                    </div>
+                    {/* Export Badge */}
+                    <div className="absolute top-3 right-3">
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-600 text-white shadow-lg">
+                        ✨ Exported
+                      </span>
+                    </div>
+                    {/* Remove button */}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="absolute top-3 left-3 h-8 w-8 bg-white/90 hover:bg-white"
+                      onClick={() => handleRemoveExportedClip(clip.id)}
+                    >
+                      <X className="h-4 w-4 text-gray-700" />
+                    </Button>
+                  </div>
+
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg line-clamp-2">{clip.title}</CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="pt-0 space-y-3">
+                    {/* Clip Info */}
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Film className="h-4 w-4" />
+                      <span>Ready for download</span>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button 
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={() => handleDownload(clip)}
+                        disabled={downloadingId === clip.id}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {downloadingId === clip.id ? 'Downloading...' : 'Download'}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"
+                        onClick={() => handleShareClip(clip)}
+                      >
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Videos Section with Timeline Filter */}
         <div>
@@ -279,7 +465,6 @@ function Dashboard() {
                       <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300">
                         <div className="absolute bottom-4 left-4 right-4">
-                          <p className="text-white text-sm font-medium mb-2">{video.processingTime} processing</p>
                           <div className="flex gap-2">
                             <Button size="sm" className="bg-white/20 backdrop-blur-sm border border-white/30 text-white hover:bg-white/30">
                               <Play className="h-3 w-3 mr-1" />
@@ -322,23 +507,6 @@ function Dashboard() {
                         </span>
                       </div>
                       
-                      {/* Stats with Visual Enhancement */}
-                      <div className="grid grid-cols-2 gap-3 py-3 px-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg mb-4">
-                        <div className="text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Eye className="h-3.5 w-3.5 text-gray-500" />
-                            <p className="text-lg font-bold text-gray-900">{video.views.toLocaleString()}</p>
-                          </div>
-                          <p className="text-xs text-gray-600 mt-0.5">Total Views</p>
-                        </div>
-                        <div className="text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                            <p className="text-lg font-bold text-green-600">{video.engagement}%</p>
-                          </div>
-                          <p className="text-xs text-gray-600 mt-0.5">Engagement</p>
-                        </div>
-                      </div>
                     <div className="flex gap-2">
                       <Button 
                         variant="outline" 
@@ -388,10 +556,6 @@ function Dashboard() {
                                 <span className="flex items-center gap-1">
                                   <Film className="h-3 w-3" />
                                   {highlight.duration}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Eye className="h-3 w-3" />
-                                  {highlight.views} views
                                 </span>
                                 <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
                                   {highlight.platform}

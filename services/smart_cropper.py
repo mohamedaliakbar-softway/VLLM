@@ -7,39 +7,63 @@ import logging
 from scipy.interpolate import interp1d, CubicSpline
 import os
 
+# Import new intelligent framing modules
+from services.content_detector import ContentDetector
+from services.priority_engine import PriorityDecisionEngine
+from services.dynamic_camera import DynamicCameraSystem
+from services.audio_visual_sync import AudioVisualSync
+
 logger = logging.getLogger(__name__)
 
 
 class SmartCropper:
     """Intelligent cropping with subject tracking for podcasts and product demos."""
 
-    def __init__(self, enable_smooth_transitions: bool = False):
-        # Initialize OpenCV face detector (Haar Cascade - more compatible)
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        if os.path.exists(cascade_path):
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
-        else:
-            # Try DNN face detector as fallback
-            try:
-                self.face_cascade = None
-                self.face_net = cv2.dnn.readNetFromTensorflow(
-                    'opencv_face_detector_uint8.pb',
-                    'opencv_face_detector.pbtxt')
-            except:
-                self.face_cascade = None
-                self.face_net = None
-                logger.warning(
-                    "Face detection not available, will use fallback methods")
-
-        # Smooth transition settings (DISABLED BY DEFAULT for performance)
-        # Enable only for high-quality professional videos where smoothness matters more than speed
+    def __init__(self, enable_smooth_transitions: bool = True, use_intelligent_framing: bool = True):
+        # Configuration
+        self.use_intelligent_framing = use_intelligent_framing
         self.enable_smooth_transitions = enable_smooth_transitions
-        self.max_velocity = 100  # Max pixels per second movement (increased for less restriction)
+        
+        if self.use_intelligent_framing:
+            # Initialize new intelligent framing system
+            logger.info("Initializing Intelligent Framing System...")
+            
+            self.content_detector = ContentDetector(config={
+                'enable_face_detection': True,
+                'enable_text_detection': True,
+                'enable_motion_tracking': True,
+                'enable_object_detection': False  # Disabled for performance
+            })
+            
+            self.priority_engine = PriorityDecisionEngine(config={
+                'min_priority_to_focus': 70,
+                'priority_change_threshold': 20,
+                'min_hold_duration': 2.0,
+                'audio_boost_factor': 20,
+                'keyword_match_boost': 10
+            })
+            
+            self.audio_visual_sync = AudioVisualSync()
+            
+            logger.info("✅ Intelligent Framing System ready")
+        else:
+            # Legacy face detector for fallback
+            logger.info("Using legacy framing system")
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            if os.path.exists(cascade_path):
+                self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            else:
+                self.face_cascade = None
+                logger.warning("Face detection not available, will use fallback methods")
+        
+        # Smooth transition settings
+        self.max_velocity = 200  # Max pixels per second movement
         self.min_movement_threshold = 50  # Only apply smoothing if movement > this many pixels
 
     def apply_smart_crop(self, clip: VideoFileClip, category: str,
                          tracking_focus: str,
-                         target_size: Tuple[int, int]) -> VideoFileClip:
+                         target_size: Tuple[int, int],
+                         transcript: Optional[List[Dict]] = None) -> VideoFileClip:
         """
         Apply intelligent cropping based on video category and tracking focus.
 
@@ -48,6 +72,7 @@ class SmartCropper:
             category: "podcast" or "product_demo"
             tracking_focus: Description of what to track (e.g., "speaking person", "product feature", "mouse cursor")
             target_size: Target (width, height) tuple
+            transcript: Optional transcript for audio-visual sync
 
         Returns:
             Cropped and resized video clip
@@ -75,15 +100,132 @@ class SmartCropper:
             crop_width = original_width
             crop_height = int(original_width / target_aspect)
 
-        # Intelligent tracking based on category and tracking_focus
-        # Priority: tracking_focus > category
-        crop_positions = self._smart_track_subject(
-            clip, crop_width, crop_height, duration, category, tracking_focus
+        # Use intelligent framing system if enabled
+        if self.use_intelligent_framing:
+            logger.info("Using Intelligent Framing System with dynamic camera movements")
+            return self._apply_intelligent_framing(
+                clip, crop_width, crop_height, target_size, 
+                category, tracking_focus, transcript
+            )
+        else:
+            # Legacy method: Intelligent tracking based on category and tracking_focus
+            logger.info("Using legacy framing system")
+            crop_positions = self._smart_track_subject(
+                clip, crop_width, crop_height, duration, category, tracking_focus
+            )
+            return self._apply_dynamic_crop(clip, crop_positions, crop_width,
+                                            crop_height, target_size)
+    
+    def _apply_intelligent_framing(self, clip: VideoFileClip, crop_width: int,
+                                   crop_height: int, target_size: Tuple[int, int],
+                                   category: str, tracking_focus: str,
+                                   transcript: Optional[List[Dict]] = None) -> VideoFileClip:
+        """
+        Apply intelligent framing with multi-layer detection and audio-visual sync.
+        
+        This creates cinematic camera movements that follow content intelligently.
+        """
+        logger.info(f"Analyzing video with intelligent framing...")
+        logger.info(f"  Duration: {clip.duration:.1f}s, Size: {clip.w}x{clip.h}")
+        logger.info(f"  Category: {category}, Focus: {tracking_focus}")
+        
+        # Reset priority engine for new video
+        self.priority_engine.reset_state()
+        
+        # Step 1: Analyze audio if transcript available
+        audio_segments = []
+        if transcript:
+            logger.info(f"Analyzing transcript ({len(transcript)} segments)...")
+            audio_segments = self.audio_visual_sync.analyze_transcript_segments(transcript)
+            logger.info(f"  \u2192 Extracted {len(audio_segments)} audio segments with intent")
+        
+        # Step 2: Sample video and detect content
+        logger.info("Detecting content in video frames...")
+        sample_interval = 3  # Analyze every 3rd frame for performance
+        sample_times = np.arange(0.5, clip.duration, 1.0 / clip.fps * sample_interval)
+        
+        all_detections = []
+        prev_frame = None
+        
+        for i, t in enumerate(sample_times):
+            if i % 30 == 0:  # Log progress every 30 frames
+                logger.info(f"  Processing frame at t={t:.1f}s ({i}/{len(sample_times)})...")
+            
+            try:
+                # Get frame
+                frame = clip.get_frame(t)
+                
+                # Detect content in this frame
+                detections = self.content_detector.detect_all_layers(frame, t, prev_frame)
+                
+                # Find relevant audio segment for this time
+                audio_segment = None
+                if audio_segments:
+                    for segment in audio_segments:
+                        if segment['start'] <= t <= segment['end']:
+                            audio_segment = segment
+                            break
+                
+                # Apply audio boost if available
+                if audio_segment and detections:
+                    detections = self.audio_visual_sync.match_audio_to_detections(
+                        audio_segment, detections
+                    )
+                
+                # Select best target using priority engine
+                best_target = self.priority_engine.select_best_target(
+                    detections, audio_segment, t
+                )
+                
+                if best_target:
+                    all_detections.append(best_target)
+                
+                prev_frame = frame
+                
+            except Exception as e:
+                logger.warning(f"Error processing frame at t={t:.1f}s: {e}")
+                continue
+        
+        logger.info(f"Content detection complete: {len(all_detections)} focus targets identified")
+        
+        # Step 3: Generate camera movement timeline
+        logger.info("Generating smooth camera movements...")
+        camera_system = DynamicCameraSystem(
+            frame_size=(clip.w, clip.h),
+            crop_size=(crop_width, crop_height),
+            config={
+                'max_pan_speed': 200,
+                'max_zoom_speed': 0.1,
+                'min_hold_duration': 2.0,
+                'max_zoom': 1.5,
+                'min_zoom': 0.8,
+                'smooth_transitions': self.enable_smooth_transitions
+            }
         )
-
-        # Apply dynamic cropping
-        return self._apply_dynamic_crop(clip, crop_positions, crop_width,
-                                        crop_height, target_size)
+        
+        camera_keyframes = camera_system.generate_camera_timeline(
+            all_detections, clip.duration
+        )
+        
+        logger.info(f"Camera timeline generated: {len(camera_keyframes)} keyframes")
+        
+        # Step 4: Apply dynamic crop frame-by-frame
+        logger.info("Applying dynamic crop with smooth camera movements...")
+        
+        def crop_frame_function(get_frame, t):
+            """Apply dynamic crop to each frame."""
+            frame = get_frame(t)
+            cropped = camera_system.apply_dynamic_crop(frame, camera_keyframes, t)
+            return cropped
+        
+        # Transform clip with dynamic cropping
+        cropped_clip = clip.transform(crop_frame_function)
+        
+        # Resize to target size
+        final_clip = cropped_clip.resized(new_size=target_size)
+        
+        logger.info("\u2705 Intelligent framing complete!")
+        return final_clip
 
     def _track_person(self, clip: VideoFileClip, crop_width: int,
                       crop_height: int,

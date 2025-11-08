@@ -5,7 +5,7 @@ integrations = ["python_database:1.0.0", "python_log_in_with_replit:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["ffmpeg", "ffmpeg-full", "freetype", "imagemagickBig", "lcms2", "libGL", "libGLU", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "nano", "openjpeg", "pkg-config", "tcl", "tesseract", "tk", "xsimd", "zlib"]
+packages = ["ffmpeg", "ffmpeg-full", "freetype", "imagemagickBig", "lcms2", "libGL", "libGLU", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "nano", "openjpeg", "pkg-config", "tcl", "tesseract", "tk", "xsimd", "zlib", "wget", "unzipNLS"]
 
 [workflows]
 runButton = "Project"
@@ -54,10 +54,6 @@ externalPort = 80
 [[ports]]
 localPort = 8000
 externalPort = 8000
-
-[[ports]]
-localPort = 41033
-externalPort = 3000
 
 [deployment]
 deploymentTarget = "vm"
