@@ -1,244 +1,57 @@
 # Video Shorts Generator - Replit Setup
 
 ## Overview
-An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). Uses Google's Gemini AI to identify the most compelling segments.
+An AI-powered SaaS application that automatically creates engaging 15-30 second marketing shorts from long-form YouTube videos (15-30 minutes). It leverages Google's Gemini AI to identify compelling segments, aiming to transform videos into multi-platform social media content rapidly. The business vision is to provide a fast, AI-driven solution for content creators and marketers to repurpose long-form video into high-engagement short-form content, significantly reducing manual editing time and boosting content reach across platforms like YouTube Shorts, Instagram Reels, Facebook, LinkedIn, and WhatsApp.
 
-## Project Type
-- **Backend**: FastAPI REST API (Python 3.11)
-- **Port**: 5000
-- **AI Service**: Google Gemini 2.5 Flash for video analysis
-- **Video Processing**: FFmpeg, yt-dlp, moviepy
+## User Preferences
+- All authentication has been removed as per user request.
+- The user prefers a rapid, iterative development approach.
+- The user prefers detailed explanations of changes and functionality.
+- The user wants the AI to act as a conversational video editing agent, understanding natural language commands for video manipulation.
+- The user prefers a clear, concise communication style.
+- The user wants the agent to make changes to the codebase and then explain what those changes were, including a summary of why the change was made, and any alternative approaches considered.
 
-## Key Features
-- Direct YouTube URL processing (no manual download needed for analysis)
-- AI-powered highlight detection with engagement scoring
-- **Conversational AI video editing**: Chat with AI agent to modify videos using natural language commands
-- Automatic video clipping for multiple social platforms
-- Supports YouTube Shorts, Instagram Reels, Facebook, LinkedIn, WhatsApp formats
-- Generates up to 3 optimized shorts per video
-- Real-time video editing: trim, shorten, speed adjust, split clips via AI chat
+## System Architecture
+The application features a React + Vite frontend and a FastAPI (Python 3.11) backend, communicating via REST APIs and Server-Sent Events (SSE) for real-time updates.
 
-## Setup Status
-✅ Python 3.11 installed
-✅ FFmpeg installed (system dependency)
-✅ All Python dependencies installed via pip
-✅ Gemini API key configured in Replit Secrets
-✅ Port configured to 5000 for Replit webview
-✅ Workflow configured to run FastAPI server
+**UI/UX Decisions:**
+- **Design:** The frontend is designed with a professional, dark-themed interface, matching the "HighlightAI" reference images.
+- **Landing Page:** Includes a navigation bar, a hero section with a gradient title, a single YouTube URL input field, and feature badges emphasizing "AI-Powered Detection," "2-Minute Processing," and "Multi-Platform Export."
+- **Video Editor:** A three-panel layout comprises:
+    - **Left Panel:** AI chat interface for conversational editing with quick action buttons.
+    - **Center Panel:** Video player with playback controls, clip labels, and a timeline for clip management, selection, and reordering.
+    - **Right Panel:** Properties panel for editing clip titles, time ranges, duration, and order.
+- **Workflow:** Users provide a YouTube URL, are instantly redirected to an editor with a blurred thumbnail, and receive live progress updates as the backend processes the video. The blurred thumbnail is replaced with a playable video when ready.
 
-## API Endpoints
-- `GET /` - Service status
-- `GET /health` - Health check
-- `GET /docs` - Swagger UI documentation
-- `POST /api/v1/generate-shorts` - Generate shorts from YouTube URL
-- `GET /api/v1/job/{job_id}` - Get job status (memory-based, real-time)
-- `GET /api/v1/projects` - List all projects from database
-- `GET /api/v1/projects/{project_id}` - Get project with shorts from database
-- `GET /api/v1/download/{filename}` - Download generated short
-- `DELETE /api/v1/shorts/{filename}` - Delete a short
-- `GET /api/v1/progress/{job_id}` - Real-time progress via Server-Sent Events
-- **`POST /api/v1/chat`** - Conversational AI agent for video editing (NEW)
+**Technical Implementations:**
+- **Core Processing:** Optimized to reduce video processing from 10 minutes to 15-20 seconds by using a transcript-first analysis pipeline:
+    1.  **Transcript Extraction:** Subtitles are extracted without full video download.
+    2.  **AI Analysis:** Gemini analyzes the transcript to identify up to three engaging segments.
+    3.  **Selective Download:** Only identified 30-second segments are downloaded using FFmpeg.
+    4.  **Fast Encoding:** Shorts are created in parallel using FFmpeg's `veryfast` preset.
+- **Conversational AI Editing:** An AI-powered `VideoEditingAgent` (using Gemini) processes natural language commands for video operations (trim, shorten, speed adjust, split clips).
+- **Captioning:** Live captions are generated using Vosk (offline) with Gemini as an online fallback, supporting multiple caption styles (bold_modern, elegant_serif, fun_playful).
+- **Database:** PostgreSQL is used for persistence, storing projects and generated shorts via SQLAlchemy ORM.
+- **Error Handling:** Robust error handling includes retry logic with exponential backoff for YouTube API requests to mitigate rate limiting and handling of browser cookie issues with `yt-dlp`.
+- **Dual Storage:** Memory-based tracking for real-time job status and database for long-term project persistence.
 
-## Environment Configuration
-The application uses Replit Secrets and environment variables:
-- `GEMINI_API_KEY` - Required for AI video analysis
-- `DATABASE_URL` - PostgreSQL connection string (auto-configured by Replit)
-- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` - PostgreSQL credentials
+**Feature Specifications:**
+- Direct YouTube URL processing.
+- AI-powered highlight detection.
+- Real-time video editing via AI chat.
+- Automatic clipping for various social platforms.
+- Generation of up to 3 optimized shorts per video.
+- Support for live captions and multiple caption styles.
 
-Other settings are configured in `config.py` with sensible defaults:
-- Max video duration: 30 minutes
-- Min video duration: 3 minutes
-- Short duration: 15-30 seconds
-- Max highlights per video: 3
-
-## Project Structure
-```
-├── main.py                    # FastAPI application entry point
-├── config.py                  # Configuration settings
-├── database.py                # PostgreSQL database configuration
-├── models.py                  # SQLAlchemy database models (Project, Short)
-├── init_db.py                 # Database initialization script
-├── requirements.txt           # Python dependencies
-├── services/                  # Service layer
-│   ├── youtube_processor.py  # YouTube video download
-│   ├── gemini_analyzer.py    # AI video analysis
-│   ├── video_agent.py         # AI agent for conversational video editing (NEW)
-│   ├── video_clipper.py      # Video clipping & editing operations
-│   └── smart_cropper.py      # Smart video cropping
-├── frontend/                  # React + Vite frontend
-│   ├── src/
-│   │   ├── pages/            # Page components (Landing, VideoEditor)
-│   │   ├── utils/            # Utility functions (YouTube helpers)
-│   │   └── App.css           # Styling
-│   └── vite.config.js
-├── temp/                      # Temporary video storage (gitignored)
-└── output/                    # Generated shorts (gitignored)
-```
-
-## How It Works (OPTIMIZED - 20 seconds)
-1. User provides YouTube URL
-2. **Transcript extraction** (2-3s) - Extract video subtitles without downloading
-3. **AI analysis** (3-5s) - Gemini analyzes transcript to identify top 3 engaging segments
-4. **Selective download** (5-8s) - Download ONLY the identified 30-second segments using FFmpeg
-5. **Fast encoding** (3-5s) - Create shorts in parallel with FFmpeg veryfast preset
-6. **Total time: ~15-20 seconds** (down from 10 minutes!)
-
-### Performance Optimizations
-- **No full video download**: Transcripts analyzed instead of entire video
-- **Segment-only download**: Downloads 90 seconds total instead of 15-30 minutes
-- **FFmpeg direct**: 10x faster than MoviePy encoding
-- **Parallel processing**: All 3 shorts encoded simultaneously
-- **Text-based AI analysis**: Gemini analyzes transcripts (seconds) vs videos (minutes)
-
-## Technology Stack
-**Frontend:**
-- React 19 with Vite
-- React Router for navigation
-- Axios for API calls
-- Lucide React for icons
-- Custom CSS with modern dark theme
-
-**Backend:**
-- FastAPI (Python 3.11)
-- Google Gemini AI for video analysis
-- yt-dlp for YouTube downloads
-- FFmpeg for video processing
-- MoviePy for video editing
-- Server-Sent Events (SSE) for real-time updates
-
-## Application Flow
-1. **Landing Page**: User enters YouTube URL and clicks "Generate"
-2. **Instant Redirect**: Navigates to video editor with blurred YouTube thumbnail
-3. **Background Processing**: Backend extracts transcript → AI analysis → segment download → encoding (15-20s total)
-4. **Live Updates**: Loading overlay shows real-time progress status
-5. **Video Preview**: Blurred thumbnail automatically replaced with playable video when first short is ready
-6. **Editor Interface**: Three-panel layout with:
-   - Left: AI chat interface for conversational editing
-   - Center: Video player with timeline and clip management
-   - Right: Properties panel for clip customization
-7. **Publishing**: Export and share generated shorts
-
-## Recent Changes
-- November 8, 2025: **AI AGENT FOR CONVERSATIONAL VIDEO EDITING**
-  - **Created VideoEditingAgent**: AI-powered agent that uses Gemini to understand natural language commands
-  - **Video editing operations**: Added trim, shorten, extend, speed adjust, and split operations using FFmpeg
-  - **New chat endpoint**: `/api/v1/chat` for conversational video editing with agent orchestration
-  - **Frontend integration**: Chat UI now calls backend AI agent and updates clips in real-time
-  - **Quick action buttons**: All quick actions route through AI agent for automated processing
-  - **Supported commands**: "shorten to 20 seconds", "speed up 2x", "trim first 5 seconds", "split at 10 seconds", etc.
-  - **Smart file handling**: Backend derives file paths from filenames and handles clip updates seamlessly
-  - **Result**: Users can now edit videos by simply chatting with AI instead of manual editing
-
-- November 8, 2025: **CRITICAL BUG FIX - YouTube Rate Limiting Resolved**
-  - **Fixed 429 errors**: Added retry logic with exponential backoff for transcript extraction
-  - **Root cause**: YouTube's API was rate-limiting transcript requests, causing failures
-  - **Solution**: Implemented 3-attempt retry with 1s, 2s, 4s delays between retries
-  - **Impact**: Transcript extraction now succeeds even when temporarily rate-limited
-  - **Improvement**: Better quality shorts with full transcript analysis instead of fallback mode
-
-- November 8, 2025: **CRITICAL BUG FIX - Chrome Cookies Error Resolved**
-  - **Fixed YouTube download issue**: Disabled browser cookies in server environment
-  - **Root cause**: yt-dlp was trying to load Chrome cookies, but Chrome isn't installed in Replit
-  - **Solution**: Changed `youtube_use_browser_cookies` from `True` to `False` in config.py
-  - **Impact**: YouTube video processing now works without browser cookie errors
-  - **Note**: Cookies can still be manually provided via `youtube_cookies_file` if needed for bot detection
-
-- November 8, 2025: **CRITICAL BUG FIX - MoviePy Import Resolved & Authentication Removed**
-  - **Fixed MoviePy import**: Updated all imports from `moviepy.editor` to `moviepy` for compatibility with MoviePy 2.x
-  - **Updated services**: Fixed imports in `video_clipper.py` and `smart_cropper.py`
-  - **Removed all authentication**: Deleted auth.py, session middleware, auth routes, and auth UI per user request
-  - **Frontend cleanup**: Removed Sign In/Logout buttons, user state, and auth API calls from Landing page
-  - **Proxy cleanup**: Removed `/auth` proxy configuration from vite.config.js
-  - **Backend now starts**: Both backend and frontend workflows running successfully
-  - **Health check passing**: Backend responds correctly at `/health` and `/` endpoints
-  - **Application runs unauthenticated**: All features work without requiring user login
-  - **Architect reviewed**: All changes verified for correctness and runtime compatibility
-
-- November 8, 2025: **DATABASE PERSISTENCE ADDED**
-  - **Created PostgreSQL database schema** with `projects` and `shorts` tables
-  - **Automatic saving**: All generated videos now persist to database
-  - **New API endpoints**: `/api/v1/projects` and `/api/v1/projects/{project_id}` for retrieving saved projects
-  - **SQLAlchemy ORM**: Clean database integration with models for Project and Short
-  - **Dual storage**: Memory-based for real-time job tracking, database for long-term persistence
-  - **Frontend ready**: Backend now returns proper data structure for UI display
-  - **Error tracking**: Failed jobs saved to database with error messages
-  - **Relationship mapping**: Projects automatically linked to their generated shorts
-
-- November 8, 2025: **VIDEO PROCESSING FLOW & UX IMPROVEMENTS**
-  - **Instant Navigation**: Generate button now immediately redirects to editor
-  - **Blurred Thumbnail Preview**: Extracts YouTube thumbnail and displays with blur effect during processing
-  - **Real-time Progress**: Shows live status updates (Extracting transcript → AI analyzing → Downloading segments → Encoding)
-  - **Seamless Transition**: Blurred preview automatically replaced with playable video when generation completes
-  - **Smart Polling**: Frontend polls job status every second and handles completion/errors gracefully
-  - **YouTube Utilities**: Added `extractVideoId()` and `getThumbnailUrl()` helper functions
-  - **Enhanced Loading States**: Animated spinner, progress bar, and status messages
-  - **Route Cleanup**: Consolidated `/editor` as main video editor route
-  - **Error Handling**: Graceful fallbacks for missing transcripts, failed jobs, and timeout scenarios
-
-- November 8, 2025: **MASSIVE PERFORMANCE OPTIMIZATION**
-  - **Reduced processing time from 10 minutes to 15-20 seconds** (30x faster!)
-  - Implemented transcript-first analysis pipeline:
-    - Added `get_transcript()` method for subtitle extraction without video download
-    - Created `analyze_transcript_for_highlights()` for fast text-based AI analysis
-    - Built `download_video_segments()` using FFmpeg to fetch only identified clips
-    - Added `create_shorts_fast()` with FFmpeg veryfast preset and parallel processing
-  - Updated `process_video_async()` to orchestrate optimized 4-stage pipeline
-  - Enhanced error handling and language fallback for subtitles (en, en-US, en-GB, en-AU)
-  - All optimizations maintain same output quality and API compatibility
-
-- November 8, 2025: Complete redesign based on HighlightAI reference images
-  - **Landing Page Redesign:**
-    - Added professional navigation bar with HighlightAI branding
-    - Navigation links: Features, How It Works, Pricing, Sign In, Get Started
-    - Hero section with "AI-Powered Video Highlights" badge
-    - Title "Transform Videos into" with gradient block
-    - Single URL input field with "Generate" button
-    - "No credit card required • Free trial available" notice
-    - Three feature badges: AI-Powered Detection, 2-Minute Processing, Multi-Platform Export
-    - Clean dark theme matching reference design
-  
-  - **Video Editor Three-Panel Layout:**
-    - Left panel (280px): Assistant chat with Gemini
-      - Quick action buttons (Use example video, Add live captions, Dub in Kannada, etc.)
-      - Chat history with user and assistant messages
-      - Message input with send button
-    - Center panel: Video preview with playback controls
-      - Play/pause overlay button
-      - Clip label showing current clip number
-      - Bottom timeline section with all clips
-      - Timeline controls: Add Clip, Move Up, Move Down
-      - Clip selection and reordering functionality
-    - Right panel (350px): Properties panel
-      - Clip title editing
-      - Time range display (start/end times)
-      - Duration slider with presets (15s, 30s, 60s)
-      - Trim controls (Trim Start, Trim End)
-      - Order display (clip position in timeline)
-  
-  - **State Management:**
-    - Proper state synchronization between panels
-    - Properties panel reflects selected clip
-    - Edits persist back to clips array
-    - Timeline updates in real-time with changes
-    - Add/remove/reorder clips with full state management
-
-- November 7, 2025: Full application built
-  - Created React + Vite frontend with landing page and editor
-  - Implemented AI conversation interface with chat UI
-  - Added Server-Sent Events for real-time progress updates
-  - Split backend (port 8000) and frontend (port 5000) architecture
-  - Created beautiful dark-themed UI with gradient effects
-  - Set up dual-server workflow (backend + frontend)
-  - Configured proper CORS and API proxying
-  - Added progress tracking infrastructure for live updates
-
-## Future Enhancements
-The following features are planned for future releases:
-- Real-time video captioning/subtitle generation
-- Multi-language voice dubbing (Kannada, Hindi, etc.) with AI TTS
-- Advanced video editing via conversational AI
-- Social media OAuth integrations (YouTube, Instagram, Facebook, LinkedIn, TikTok)
-- AI-generated platform-specific marketing copy
-- Video preview player in the editor
-- Batch processing for multiple videos
-- Analytics dashboard for engagement metrics
+## External Dependencies
+- **AI Service:** Google Gemini AI (2.5 Flash) for video analysis and conversational editing.
+- **Video Processing:**
+    - FFmpeg for efficient video downloading, clipping, and encoding.
+    - `yt-dlp` for YouTube video downloading and metadata extraction.
+    - `moviepy` for supplementary video editing operations.
+    - Vosk for offline speech recognition and caption generation.
+- **Database:** PostgreSQL for persistent storage of project data and generated shorts.
+- **Frontend Framework:** React 19 with Vite.
+- **Routing:** React Router.
+- **API Communication:** Axios.
+- **Icons:** Lucide React.

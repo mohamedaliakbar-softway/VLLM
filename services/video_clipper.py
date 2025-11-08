@@ -652,6 +652,90 @@ class VideoClipper:
             logger.error(f"Error splitting clip: {str(e)}")
             raise
     
+    def add_captions(
+        self,
+        input_path: str,
+        style: str = "bold_modern",
+        output_suffix: str = "_captioned"
+    ) -> str:
+        """
+        Add live captions to a video using Vosk (offline) or Gemini (online).
+        
+        Args:
+            input_path: Path to input video file
+            style: Caption style (bold_modern, elegant_serif, fun_playful)
+            output_suffix: Suffix for output filename
+            
+        Returns:
+            Path to captioned video file
+        """
+        try:
+            # Import caption services
+            from services.caption_generator import CaptionGenerator
+            from services.caption_burner import CaptionBurner
+            
+            # Generate output path
+            input_file = Path(input_path)
+            output_path = str(input_file.parent / f"{input_file.stem}{output_suffix}{input_file.suffix}")
+            
+            logger.info(f"Adding captions to video: {input_path}")
+            
+            # Step 1: Generate captions
+            caption_gen = CaptionGenerator()
+            logger.info("Extracting audio and generating captions...")
+            
+            # Extract audio
+            audio_path = caption_gen.extract_audio(input_path)
+            
+            # Transcribe (tries Vosk first, falls back to Gemini)
+            captions = []
+            try:
+                if caption_gen.use_vosk:
+                    try:
+                        logger.info("Using Vosk for accurate offline transcription...")
+                        result = caption_gen.transcribe_with_vosk(audio_path)
+                        captions = result.get("words", [])
+                        logger.info(f"Generated {len(captions)} caption words using Vosk")
+                    except Exception as vosk_error:
+                        logger.warning(f"Vosk transcription failed: {vosk_error}, falling back to Gemini")
+                        logger.info("Using Gemini for online transcription...")
+                        result = caption_gen.transcribe_with_gemini(audio_path)
+                        captions = result.get("words", [])
+                        logger.info(f"Generated {len(captions)} caption words using Gemini")
+                else:
+                    logger.info("Using Gemini for online transcription...")
+                    result = caption_gen.transcribe_with_gemini(audio_path)
+                    captions = result.get("words", [])
+                    logger.info(f"Generated {len(captions)} caption words using Gemini")
+                
+            finally:
+                # Clean up audio file
+                if Path(audio_path).exists():
+                    Path(audio_path).unlink()
+            
+            # Step 2: Burn captions into video
+            if captions:
+                caption_burner = CaptionBurner()
+                logger.info(f"Burning captions with style: {style}")
+                caption_burner.burn_captions(
+                    video_path=input_path,
+                    captions=captions,
+                    style_name=style,
+                    output_path=output_path
+                )
+                logger.info(f"Captions added successfully: {output_path}")
+            else:
+                logger.warning("No captions generated, copying original file")
+                # Just copy the file if no captions
+                import shutil
+                shutil.copy2(input_path, output_path)
+            
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error adding captions: {str(e)}")
+            raise
+    
     def cleanup(self, file_path: str):
         """Remove output video file."""
         try:

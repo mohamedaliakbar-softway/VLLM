@@ -1340,6 +1340,19 @@ async def chat_with_ai(request: ChatRequest):
                     new_clip["start_time"] = clip.get("start_time", 0) + split_at
                     updated_clips.insert(clip_index + 1, new_clip)
                 
+                elif op_type == "add_captions":
+                    style = params.get("style", "bold_modern")
+                    new_path = video_clipper.add_captions(clip_path, style=style)
+                    # Only update if captioning succeeded
+                    if new_path and Path(new_path).exists():
+                        updated_clips[clip_index]["file_path"] = new_path
+                        updated_clips[clip_index]["path"] = new_path
+                        updated_clips[clip_index]["filename"] = Path(new_path).name
+                        updated_clips[clip_index]["download_url"] = f"/api/v1/download/{Path(new_path).name}"
+                        updated_clips[clip_index]["has_captions"] = True
+                    else:
+                        logger.warning(f"Captions operation returned invalid path: {new_path}")
+                
                 elif op_type == "delete":
                     # Remove clip from list
                     updated_clips.pop(clip_index)

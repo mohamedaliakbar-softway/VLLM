@@ -17,6 +17,7 @@ scipy>=1.11.0
 pillow>=10.0.0
 pytesseract>=0.3.10
 ffmpeg-python>=0.2.0
+vosk>=0.3.45
 psycopg2-binary>=2.9.0
 sqlalchemy>=2.0.0
 alembic>=1.13.0
@@ -46,3 +47,4 @@ oauthlib
 pyjwt
 authlib
 itsdangerous
+vosk

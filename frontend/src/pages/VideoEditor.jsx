@@ -581,18 +581,27 @@ function VideoEditor() {
 
       // Update clips if they changed
       if (success && updatedClips) {
-        setClips(updatedClips);
+        // Map updatedClips to proper format with URLs
+        const formattedClips = updatedClips.map((clip, idx) => ({
+          id: clip.id || idx + 1,
+          title: clip.title || `Highlight ${idx + 1}`,
+          startTime: clip.startTime || clip.start_time || "0:00",
+          endTime: clip.endTime || clip.end_time || "0:30",
+          duration: clip.duration || 30,
+          filename: clip.filename,
+          url: clip.download_url || clip.url || `/api/v1/download/${clip.filename}`,
+          has_captions: clip.has_captions || clip.hasCaptions || false,
+        }));
         
-        // Force video reload if the selected clip changed
-        if (videoRef.current && updatedClips[selectedClipIndex]) {
-          const newClip = updatedClips[selectedClipIndex];
-          const clipPath = newClip.file_path || newClip.path;
-          if (clipPath && !clipPath.startsWith('http')) {
-            // Update video source to the new file
-            const videoUrl = `/api/v1/download/${clipPath.split('/').pop()}`;
-            videoRef.current.src = videoUrl;
-            videoRef.current.load();
-          }
+        setClips(formattedClips);
+        
+        // Force video reload for the current clip
+        if (videoRef.current && formattedClips[selectedClipIndex]) {
+          const newClip = formattedClips[selectedClipIndex];
+          // Force reload by appending timestamp to bypass cache
+          const videoUrl = `${newClip.url}?t=${Date.now()}`;
+          videoRef.current.src = videoUrl;
+          videoRef.current.load();
         }
       }
     } catch (error) {
