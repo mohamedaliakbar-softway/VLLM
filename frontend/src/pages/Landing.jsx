@@ -58,7 +58,7 @@ function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-white relative overflow-hidden">
+    <div className="h-screen bg-white relative overflow-hidden">
       {/* Circular Gradient Background Loader */}
       <div className="loader-wrapper loader-wrapper-home">
         <span className="loader-letter"></span>
@@ -98,18 +98,6 @@ function Landing() {
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-3">
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="Toggle theme"
-              >
-                {darkMode ? <Sun className="h-5 w-5 text-gray-600" /> : <Moon className="h-5 w-5 text-gray-600" />}
-              </button>
-
-              {/* Divider */}
-              <div className="h-6 w-px bg-gray-300" />
-
               {user ? (
                 /* User Profile Menu */
                 <div className="relative">
@@ -190,13 +178,13 @@ function Landing() {
       </nav>
 
   {/* Hero Section */}
-  <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 py-8 sm:py-12 text-center relative z-10">
-        <Badge variant="outline" className="mb-8 inline-flex items-center gap-2 border-gray-300 text-gray-700">
+  <div className="h-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-4 sm:pb-6 text-center relative z-10 flex flex-col items-center justify-center">
+        <Badge variant="outline" className="mb-4 sm:mb-6 inline-flex items-center gap-2 border-gray-300 text-gray-700">
           <Sparkles className="h-4 w-4" />
           AI-Powered Video Highlights
         </Badge>
         
-        <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-6">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-3 sm:mb-4">
           Transform Videos into
           <div className="relative mt-4 max-w-2xl mx-auto">
             {/* Liquid Glass Container */}
@@ -258,14 +246,14 @@ function Landing() {
           </div>
         </h1>
 
-        <p className="text-lg sm:text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
+        <p className="text-base sm:text-lg text-gray-600 mb-4 sm:mb-6 max-w-2xl mx-auto">
           Paste any YouTube URL and let our advanced AI extract the most
           <br className="hidden sm:block" />
           engaging moments in seconds. Perfect for creating Shorts, Reels, and TikToks.
         </p>
 
         {/* URL Input */}
-        <form onSubmit={handleSubmit} className="max-w-2xl mx-auto mb-6">
+        <form onSubmit={handleSubmit} className="max-w-2xl mx-auto mb-3 sm:mb-4">
           <div className="flex flex-col sm:flex-row gap-3 p-1 bg-gray-50 rounded-xl border border-gray-200">
             <Input
               type="url"
@@ -288,18 +276,18 @@ function Landing() {
         </form>
 
         {error && (
-          <Alert variant="destructive" className="max-w-2xl mx-auto mb-6 border-red-200 bg-red-50">
+          <Alert variant="destructive" className="max-w-2xl mx-auto mb-3 sm:mb-4 border-red-200 bg-red-50">
             <AlertDescription className="text-red-800">{error}</AlertDescription>
           </Alert>
         )}
 
-        <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-12">
+        <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">
           <div className="text-green-600 font-bold">✓</div>
           <span>No credit card required • Free trial available</span>
         </div>
 
         {/* Feature Highlights */}
-        <div className="flex flex-wrap items-center justify-center gap-8">
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
           <div className="flex items-center gap-2 text-gray-700">
             <Zap className="h-5 w-5 text-[#1E201E]" />
             <span className="text-sm font-medium">AI-Powered Detection</span>
