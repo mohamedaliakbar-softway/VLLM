@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Video, Sparkles, ArrowRight, Zap, Clock, Share2, Sun, Moon, User, Settings, LogOut } from 'lucide-react';
+import { Sparkles, ArrowRight, Zap, Clock, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -9,25 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 function Landing() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [error, setError] = useState('');
-  const [user, setUser] = useState(null);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    // Check if user is logged in
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-
-    // Check dark mode preference
-    const settings = localStorage.getItem('settings');
-    if (settings) {
-      const { darkMode: isDark } = JSON.parse(settings);
-      setDarkMode(isDark);
-    }
-  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -43,19 +25,6 @@ function Landing() {
     navigate('/editor', { state: { youtubeUrl } });
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
-    setShowProfileMenu(false);
-  };
-
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    const settings = JSON.parse(localStorage.getItem('settings') || '{}');
-    settings.darkMode = newMode;
-    localStorage.setItem('settings', JSON.stringify(settings));
-  };
 
   return (
     <div className="h-screen bg-white relative overflow-hidden">
@@ -79,100 +48,30 @@ function Landing() {
         <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#1E201E] rounded-lg flex items-center justify-center">
-                <Video className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-semibold text-gray-900">HighlightAI</span>
+              <img 
+                src="/ApplyX.png" 
+                alt="Zapp.ai Logo" 
+                className="w-10 h-10 rounded-lg object-contain"
+              />
             </div>
 
-            {/* Center Navigation */}
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm text-gray-600 hover:text-gray-900 font-medium">Features</a>
-              <a href="#demos" className="text-sm text-gray-600 hover:text-gray-900 font-medium">Demos</a>
-              <a href="#architecture" className="text-sm text-gray-600 hover:text-gray-900 font-medium">Architecture</a>
-              <button className="text-sm text-gray-600 hover:text-gray-900 font-medium flex items-center gap-1">
-                <Sparkles className="h-4 w-4" />
-                Agent Dashboard
-              </button>
+            {/* Center - Product Name */}
+            <div className="absolute left-1/2 transform -translate-x-1/2">
+              <span className="text-xl font-semibold text-gray-900">Zapp.ai</span>
             </div>
 
-            {/* Right Side Actions */}
+            {/* Right Side Actions - Login and Sign Up */}
             <div className="flex items-center gap-3">
-              {user ? (
-                /* User Profile Menu */
-                <div className="relative">
-                  <button
-                    onClick={() => setShowProfileMenu(!showProfileMenu)}
-                    className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-3 py-2 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1E201E] to-gray-700 flex items-center justify-center text-white text-sm font-bold">
-                      {user.avatar ? (
-                        <img src={user.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        user.name?.charAt(0).toUpperCase() || 'U'
-                      )}
-                    </div>
-                    <span className="text-sm font-medium text-gray-900 hidden sm:block">{user.name}</span>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showProfileMenu && (
-                    <>
-                      <button 
-                        className="fixed inset-0 z-10 bg-transparent border-0 cursor-default" 
-                        onClick={() => setShowProfileMenu(false)}
-                        onKeyDown={(e) => e.key === 'Escape' && setShowProfileMenu(false)}
-                        aria-label="Close menu"
-                      />
-                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
-                        <div className="px-4 py-3 border-b border-gray-100">
-                          <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                          <p className="text-xs text-gray-600 truncate">{user.email}</p>
-                        </div>
-                        <Link
-                          to="/profile"
-                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          onClick={() => setShowProfileMenu(false)}
-                        >
-                          <User className="h-4 w-4" />
-                          Profile
-                        </Link>
-                        <Link
-                          to="/settings"
-                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          onClick={() => setShowProfileMenu(false)}
-                        >
-                          <Settings className="h-4 w-4" />
-                          Settings
-                        </Link>
-                        <div className="border-t border-gray-100 mt-2 pt-2">
-                          <button
-                            onClick={handleLogout}
-                            className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
-                          >
-                            <LogOut className="h-4 w-4" />
-                            Logout
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                /* Login/Signup Buttons */
-                <>
-                  <Link to="/signin">
-                    <Button variant="ghost" className="text-gray-700 hover:text-gray-900">
-                      Login
-                    </Button>
-                  </Link>
-                  <Link to="/signup">
-                    <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
-                      Sign Up
-                    </Button>
-                  </Link>
-                </>
-              )}
+              <Link to="/signin">
+                <Button variant="ghost" className="text-gray-700 hover:text-gray-900">
+                  Login
+                </Button>
+              </Link>
+              <Link to="/signup">
+                <Button className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white">
+                  Sign Up
+                </Button>
+              </Link>
             </div>
         </div>
       </nav>
