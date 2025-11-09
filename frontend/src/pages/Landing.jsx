@@ -8,7 +8,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 function Landing() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [user, setUser] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -75,16 +74,15 @@ function Landing() {
         <div className="loader"></div>
       </div>
 
-      {/* Navigation Bar */}
-      <nav className="border-b border-gray-200 bg-white/80 backdrop-blur-sm relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      {/* Floating Navigation Bar */}
+      <nav className="fixed top-6 left-1/2 transform -translate-x-1/2 w-full max-w-7xl px-4 sm:px-6 lg:px-8 bg-white/70 backdrop-blur-md rounded-xl shadow-lg z-50 border border-gray-100">
+        <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-[#1E201E] rounded-lg flex items-center justify-center">
                 <Video className="h-6 w-6 text-white" />
               </div>
-              <span className="text-xl font-semibold text-gray-900">Zapp.ai</span>
+              <span className="text-xl font-semibold text-gray-900">HighlightAI</span>
             </div>
 
             {/* Center Navigation */}
@@ -132,9 +130,11 @@ function Landing() {
                   {/* Dropdown Menu */}
                   {showProfileMenu && (
                     <>
-                      <div 
-                        className="fixed inset-0 z-10" 
+                      <button 
+                        className="fixed inset-0 z-10 bg-transparent border-0 cursor-default" 
                         onClick={() => setShowProfileMenu(false)}
+                        onKeyDown={(e) => e.key === 'Escape' && setShowProfileMenu(false)}
+                        aria-label="Close menu"
                       />
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
                         <div className="px-4 py-3 border-b border-gray-100">
@@ -186,12 +186,11 @@ function Landing() {
                 </>
               )}
             </div>
-          </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center relative z-10">
+  {/* Hero Section */}
+  <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 py-8 sm:py-12 text-center relative z-10">
         <Badge variant="outline" className="mb-8 inline-flex items-center gap-2 border-gray-300 text-gray-700">
           <Sparkles className="h-4 w-4" />
           AI-Powered Video Highlights
@@ -209,7 +208,7 @@ function Landing() {
               <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/5 to-transparent opacity-40"></div>
               
               {/* Shimmer shine effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 landing-shimmer"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 animate-shimmer"></div>
               
               {/* Inner glow */}
               <div className="absolute inset-[1px] rounded-2xl bg-gradient-to-b from-white/5 to-transparent"></div>
@@ -274,12 +273,11 @@ function Landing() {
               value={youtubeUrl}
               onChange={(e) => setYoutubeUrl(e.target.value)}
               required
-              disabled={loading}
               className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button 
               type="submit" 
-              disabled={!youtubeUrl || loading} 
+              disabled={!youtubeUrl} 
               className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white whitespace-nowrap"
             >
               <Sparkles className="h-4 w-4" />

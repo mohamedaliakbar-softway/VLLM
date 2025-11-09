@@ -40,9 +40,11 @@ function SignIn() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-[#1E201E] rounded-lg flex items-center justify-center">
-              <Video className="h-7 w-7 text-white" />
-            </div>
+            <img 
+              src="/ApplyX.png" 
+              alt="Zapp.ai Logo" 
+              className="w-12 h-12 rounded-lg object-contain"
+            />
             <span className="text-2xl font-bold text-gray-900">Zapp.ai</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
