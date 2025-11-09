@@ -108,9 +108,9 @@ function VideoEditor() {
   ]);
 
   // Resizable chat panel states
-  const [chatPanelWidth, setChatPanelWidth] = useState(320);
+  const [chatPanelWidth, setChatPanelWidth] = useState(600); // Expanded by default
   const [isResizing, setIsResizing] = useState(false);
-  const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(true); // Expanded by default
 
   // Caption states
   const [captions, setCaptions] = useState(null);
