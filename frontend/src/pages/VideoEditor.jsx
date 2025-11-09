@@ -1820,27 +1820,6 @@ function VideoEditor() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Top Bar with Export and Publish buttons - Fixed position */}
-        <div className="fixed top-0 right-0 z-50 bg-white border-b border-l border-gray-200 px-4 py-2 flex items-center gap-2 shadow-sm">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={isProcessing || clips.length === 0}
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
-          <Button
-            className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white"
-            size="sm"
-            onClick={handlePublish}
-            disabled={isProcessing || clips.length === 0}
-          >
-            <Share2 className="h-4 w-4" />
-            Publish
-          </Button>
-        </div>
         <div
           className="flex-1 grid overflow-hidden transition-all duration-300"
           style={{
@@ -2039,8 +2018,30 @@ function VideoEditor() {
         {/* Right Panel - Timeline */}
         {isRightPanelVisible && (
           <aside className="flex flex-col bg-white border-l border-gray-200 overflow-hidden">
+            {/* Export and Publish Buttons */}
+            <div className="p-4 border-b border-gray-200 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={isProcessing || clips.length === 0}
+                className="flex-1"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+              <Button
+                className="bg-[#1E201E] hover:bg-[#1E201E]/90 text-white flex-1"
+                size="sm"
+                onClick={handlePublish}
+                disabled={isProcessing || clips.length === 0}
+              >
+                <Share2 className="h-4 w-4 mr-2" />
+                Publish
+              </Button>
+            </div>
             {/* Timeline Section */}
-            <div className="border-t border-gray-200 bg-gray-50 p-4 flex flex-col pt-16 space-y-4">
+            <div className="border-t border-gray-200 bg-gray-50 p-4 flex flex-col space-y-4">
               <h4 className="text-sm font-semibold text-gray-900">Timeline</h4>
               
               {/* Add Clip Button */}
