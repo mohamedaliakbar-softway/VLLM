@@ -461,7 +461,8 @@ video {
   }
 }
 
-.animate-shimmer {
+/* Landing page shimmer effect for highlight card */
+.landing-shimmer {
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -472,7 +473,7 @@ video {
   animation: shimmer 3s infinite;
 }
 
-/* Shimmer text effect - gradient moves through text */
+/* Video Editor shimmer text effect - gradient moves through text */
 @keyframes shimmer-text {
   0% {
     background-position: -200% center;
@@ -482,6 +483,7 @@ video {
   }
 }
 
+/* Video Editor only - shimmer text for loading states */
 .animate-shimmer-text {
   animation: shimmer-text 3s linear infinite;
   -webkit-background-clip: text;
