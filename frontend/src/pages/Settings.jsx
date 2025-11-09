@@ -74,7 +74,7 @@ function Settings() {
               <div className="w-8 h-8 bg-[#1E201E] rounded-lg flex items-center justify-center">
                 <Video className="h-5 w-5 text-white" />
               </div>
-              <span className="text-lg font-semibold text-gray-900">HighlightAI</span>
+              <span className="text-lg font-semibold text-gray-900">Zapp.ai</span>
             </div>
           </div>
         </div>

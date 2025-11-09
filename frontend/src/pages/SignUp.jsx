@@ -70,7 +70,7 @@ function SignUp() {
             <div className="w-12 h-12 bg-[#1E201E] rounded-lg flex items-center justify-center">
               <Video className="h-7 w-7 text-white" />
             </div>
-            <span className="text-2xl font-bold text-gray-900">HighlightAI</span>
+            <span className="text-2xl font-bold text-gray-900">Zapp.ai</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Create an account</h1>
           <p className="text-gray-600 mt-2">Start creating amazing video highlights</p>

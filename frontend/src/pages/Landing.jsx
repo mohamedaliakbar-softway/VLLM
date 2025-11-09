@@ -84,7 +84,7 @@ function Landing() {
               <div className="w-10 h-10 bg-[#1E201E] rounded-lg flex items-center justify-center">
                 <Video className="h-6 w-6 text-white" />
               </div>
-              <span className="text-xl font-semibold text-gray-900">HighlightAI</span>
+              <span className="text-xl font-semibold text-gray-900">Zapp.ai</span>
             </div>
 
             {/* Center Navigation */}
